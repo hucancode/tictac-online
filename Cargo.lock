@@ -569,6 +569,7 @@ dependencies = [
  "axum",
  "futures",
  "hyper",
+ "serde",
  "serde_json",
  "tokio",
  "tungstenite",

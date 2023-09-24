@@ -12,3 +12,4 @@ tokio = { version = "1.32.0", features = ["full"] }
 tungstenite = { version = "0.20.0" }
 serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 futures = "0.3.28"
+serde = { version = "1.0.188", features = ["default", "derive"] }

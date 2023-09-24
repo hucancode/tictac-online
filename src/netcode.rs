@@ -1,20 +1,41 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use axum::debug_handler;
-use axum::extract::ws::{WebSocket, Message};
 use axum::response::IntoResponse;
 use tokio::sync::broadcast::Sender;
-use axum::extract::{Path, Extension, WebSocketUpgrade};
+use std::net::SocketAddr;
+use axum::extract::{
+    Path, 
+    Extension, 
+    WebSocketUpgrade,
+    connect_info::ConnectInfo,
+    ws::{WebSocket, Message},
+};
 use futures::stream::StreamExt;
 use super::room::GameRoom;
 use super::room::GameRooms;
 use super::game::GameState;
 
-async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Position {
+    pub x: usize,
+    pub y: usize,
+}
+
+async fn handle_move(
+    mut socket: WebSocket, 
+    who: SocketAddr,
+    game_room: GameRoom, 
+    tx: Sender<String>) {
+    let mut player_id: Option<usize> = None;
     let message = {
-        let game_room = game_room.lock().await;
+        let mut game_room = game_room.lock().await;
+        player_id = Some(game_room.join());
         serde_json::to_string(&game_room.board).unwrap()
     };
+    let player_id = player_id.expect("Failed to join game");
     socket.send(Message::Text(message))
         .await
         .expect("WebSocket send error");
@@ -22,9 +43,11 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
         match msg {
             Ok(msg) => {
                 if let Message::Text(text) = msg {
-                    if let Ok(position) = text.parse::<usize>() {
+                    if let Ok(pos) = serde_json::from_str::<Position>(&text) {
+                        println!("making move at {:?}", pos);
                         let mut game_room = game_room.lock().await;
-                        if let Err(_) = game_room.make_move(position, 'X') {
+                        if let Err(_) = game_room.place(pos.x,pos.y,player_id) {
+                            println!("cant make a move");
                             continue;
                         }
                         let message = serde_json::to_string(&game_room.board).unwrap();
@@ -33,6 +56,8 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
                             .send(Message::Text(message))
                             .await
                             .expect("WebSocket send error");
+                    } else {
+                        println!("bad request {}", text);
                     }
                 }
             }
@@ -46,6 +71,7 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
 #[debug_handler]
 pub async fn handle_connection(
     ws: WebSocketUpgrade,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(room_name): Path<String>,
     Extension(state): Extension<GameRooms>,
     Extension(tx): Extension<Sender<String>>,
@@ -57,7 +83,7 @@ pub async fn handle_connection(
         .entry(room_name.clone())
         .or_insert_with(|| Arc::new(Mutex::new(GameState::new())))
         .clone();
-    ws.on_upgrade(move |websocket| handle_move(websocket, game_room, tx))
+    ws.on_upgrade(move |websocket| handle_move(websocket, addr, game_room, tx))
 }
 
 
