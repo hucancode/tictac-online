@@ -1,20 +1,16 @@
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use axum::debug_handler;
-use axum::response::IntoResponse;
-use tokio::sync::broadcast::Sender;
-use std::net::SocketAddr;
-use axum::extract::{
-    Path, 
-    Extension, 
-    WebSocketUpgrade,
-    connect_info::ConnectInfo,
-    ws::{WebSocket, Message},
-};
-use futures::stream::StreamExt;
+use super::game::GameState;
 use super::room::GameRoom;
 use super::room::GameRooms;
-use super::game::GameState;
+use axum::debug_handler;
+use axum::extract::{
+    ws::{Message, WebSocket},
+    Extension, Path, WebSocketUpgrade,
+};
+use axum::response::IntoResponse;
+use futures::stream::StreamExt;
+use std::sync::Arc;
+use tokio::sync::broadcast::Sender;
+use tokio::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,21 +20,20 @@ struct Position {
     pub y: usize,
 }
 
-async fn handle_move(
-    mut socket: WebSocket, 
-    who: SocketAddr,
-    game_room: GameRoom, 
-    tx: Sender<String>) {
+async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
     let mut player_id: Option<usize> = None;
-    let message = {
+    {
         let mut game_room = game_room.lock().await;
         player_id = Some(game_room.join());
-        serde_json::to_string(&game_room.board).unwrap()
-    };
+        let message =
+            serde_json::to_string(&game_room.board).expect("Can not serialize game board");
+        socket
+            .send(Message::Text(message))
+            .await
+            .expect("WebSocket send error");
+    }
     let player_id = player_id.expect("Failed to join game");
-    socket.send(Message::Text(message))
-        .await
-        .expect("WebSocket send error");
+
     while let Some(msg) = socket.next().await {
         match msg {
             Ok(msg) => {
@@ -46,11 +41,11 @@ async fn handle_move(
                     if let Ok(pos) = serde_json::from_str::<Position>(&text) {
                         println!("making move at {:?}", pos);
                         let mut game_room = game_room.lock().await;
-                        if let Err(_) = game_room.place(pos.x,pos.y,player_id) {
-                            println!("cant make a move");
-                            continue;
-                        }
-                        let message = serde_json::to_string(&game_room.board).unwrap();
+                        game_room
+                            .place(pos.x, pos.y, player_id)
+                            .expect("cant make a move");
+                        let message = serde_json::to_string(&game_room.board)
+                            .expect("Can not serialize game board");
                         let _ = tx.send(message.clone());
                         socket
                             .send(Message::Text(message))
@@ -66,12 +61,15 @@ async fn handle_move(
             }
         }
     }
+    {
+        let mut game_room = game_room.lock().await;
+        game_room.leave(player_id);
+    }
 }
 
 #[debug_handler]
 pub async fn handle_connection(
     ws: WebSocketUpgrade,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(room_name): Path<String>,
     Extension(state): Extension<GameRooms>,
     Extension(tx): Extension<Sender<String>>,
@@ -83,7 +81,5 @@ pub async fn handle_connection(
         .entry(room_name.clone())
         .or_insert_with(|| Arc::new(Mutex::new(GameState::new())))
         .clone();
-    ws.on_upgrade(move |websocket| handle_move(websocket, addr, game_room, tx))
+    ws.on_upgrade(move |websocket| handle_move(websocket, game_room, tx))
 }
-
-

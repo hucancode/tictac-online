@@ -1,16 +1,16 @@
 mod game;
-mod room;
 mod netcode;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use netcode::handle_connection;
-use tokio::sync::broadcast;
+mod room;
 use axum::routing::get;
-use std::net::SocketAddr;
 use axum::Extension;
 use axum::Router;
+use netcode::handle_connection;
 use room::GameRooms;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +23,7 @@ async fn main() {
         .layer(Extension(tx.clone()));
 
     let addr = ([127, 0, 0, 1], 8080).into();
-    let app = app.into_make_service_with_connect_info::<SocketAddr>(); 
+    let app = app.into_make_service_with_connect_info::<SocketAddr>();
     axum::Server::bind(&addr)
         .serve(app)
         .await

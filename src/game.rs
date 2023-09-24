@@ -10,7 +10,7 @@ pub struct GameState {
 impl GameState {
     pub fn new() -> Self {
         Self {
-            board: [[None;BOARD_HEIGHT]; BOARD_WIDTH],
+            board: [[None; BOARD_HEIGHT]; BOARD_WIDTH],
             current_turn: 0,
             player_count: 1,
         }
@@ -18,7 +18,7 @@ impl GameState {
 
     pub fn join(&mut self) -> usize {
         self.player_count += 1;
-        return self.player_count - 1;
+        self.player_count - 1
     }
 
     pub fn leave(&mut self, player: usize) {
