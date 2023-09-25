@@ -21,10 +21,10 @@ struct Position {
 }
 
 async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
-    let player_id: Option<usize>;
+    let player_id: usize;
     {
         let mut game_room = game_room.lock().await;
-        player_id = Some(game_room.add_player());
+        player_id = game_room.add_player();
         if let Ok(message) = serde_json::to_string(&game_room.board) {
             if socket.send(Message::Text(message)).await.is_err() {
                 eprintln!("can't response to client");
@@ -32,7 +32,6 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
             }
         }
     }
-    let player_id = player_id.unwrap();
 
     while let Some(msg) = socket.next().await {
         match msg {
