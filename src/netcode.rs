@@ -40,7 +40,7 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
                     if let Ok(pos) = serde_json::from_str::<Position>(&text) {
                         eprintln!("making move at {:?}", pos);
                         let mut game_room = game_room.lock().await;
-                        if !game_room.place(pos.x, pos.y, player_id).is_ok() {
+                        if game_room.place(pos.x, pos.y, player_id).is_err() {
                             eprintln!("bad request {}", text);
                             continue;
                         }
