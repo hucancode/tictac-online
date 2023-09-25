@@ -21,36 +21,36 @@ struct Position {
 }
 
 async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
-    let mut player_id: Option<usize> = None;
+    let player_id: Option<usize>;
     {
         let mut game_room = game_room.lock().await;
-        player_id = Some(game_room.join());
-        let message =
-            serde_json::to_string(&game_room.board).expect("Can not serialize game board");
-        socket
-            .send(Message::Text(message))
-            .await
-            .expect("WebSocket send error");
+        player_id = Some(game_room.add_player());
+        if let Ok(message) = serde_json::to_string(&game_room.board) {
+            if socket.send(Message::Text(message)).await.is_err() {
+                eprintln!("can't response to client");
+                return;
+            }
+        }
     }
-    let player_id = player_id.expect("Failed to join game");
+    let player_id = player_id.unwrap();
 
     while let Some(msg) = socket.next().await {
         match msg {
             Ok(msg) => {
                 if let Message::Text(text) = msg {
                     if let Ok(pos) = serde_json::from_str::<Position>(&text) {
-                        println!("making move at {:?}", pos);
+                        eprintln!("making move at {:?}", pos);
                         let mut game_room = game_room.lock().await;
-                        game_room
-                            .place(pos.x, pos.y, player_id)
-                            .expect("cant make a move");
-                        let message = serde_json::to_string(&game_room.board)
-                            .expect("Can not serialize game board");
-                        let _ = tx.send(message.clone());
-                        socket
-                            .send(Message::Text(message))
-                            .await
-                            .expect("WebSocket send error");
+                        if !game_room.place(pos.x, pos.y, player_id).is_ok() {
+                            eprintln!("bad request {}", text);
+                            continue;
+                        }
+                        if let Ok(message) = serde_json::to_string(&game_room.board) {
+                            let _ = tx.send(message.clone());
+                            if socket.send(Message::Text(message)).await.is_err() {
+                                eprintln!("can't response to client");
+                            }
+                        }
                     } else {
                         println!("bad request {}", text);
                     }
@@ -63,7 +63,7 @@ async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<Stri
     }
     {
         let mut game_room = game_room.lock().await;
-        game_room.leave(player_id);
+        game_room.remove_player(player_id);
     }
 }
 

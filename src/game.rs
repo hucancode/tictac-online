@@ -16,12 +16,12 @@ impl GameState {
         }
     }
 
-    pub fn join(&mut self) -> usize {
+    pub fn add_player(&mut self) -> usize {
         self.player_count += 1;
         self.player_count - 1
     }
 
-    pub fn leave(&mut self, player: usize) {
+    pub fn remove_player(&mut self, player: usize) {
         if player < self.current_turn {
             self.current_turn -= 1;
         }
