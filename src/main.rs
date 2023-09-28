@@ -28,4 +28,5 @@ async fn main() {
         .serve(app)
         .await
         .expect("Could not start server");
+    println!("Server is running at {:?}", addr);
 }

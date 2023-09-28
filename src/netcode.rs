@@ -7,12 +7,11 @@ use axum::extract::{
     Extension, Path, WebSocketUpgrade,
 };
 use axum::response::IntoResponse;
-use futures::stream::StreamExt;
+use futures::{sink::SinkExt, stream::StreamExt};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
-
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Position {
@@ -20,50 +19,66 @@ struct Position {
     pub y: usize,
 }
 
-async fn handle_move(mut socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
+async fn handle_move(socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
+    let (mut sender, mut receiver) = socket.split();
+    let mut rx = tx.subscribe();
     let player_id: usize;
     {
         let mut game_room = game_room.lock().await;
         player_id = game_room.add_player();
         if let Ok(message) = serde_json::to_string(&game_room.board) {
-            if socket.send(Message::Text(message)).await.is_err() {
+            if sender.send(Message::Text(message)).await.is_err() {
                 eprintln!("can't response to client");
-                return;
             }
         }
     }
 
-    while let Some(msg) = socket.next().await {
-        match msg {
-            Ok(msg) => {
-                if let Message::Text(text) = msg {
-                    if let Ok(pos) = serde_json::from_str::<Position>(&text) {
-                        eprintln!("making move at {:?}", pos);
-                        let mut game_room = game_room.lock().await;
-                        if game_room.place(pos.x, pos.y, player_id).is_err() {
-                            eprintln!("bad request {}", text);
-                            continue;
-                        }
-                        if let Ok(message) = serde_json::to_string(&game_room.board) {
-                            let _ = tx.send(message.clone());
-                            if socket.send(Message::Text(message)).await.is_err() {
-                                eprintln!("can't response to client");
-                            }
-                        }
-                    } else {
-                        println!("bad request {}", text);
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("Error processing WebSocket message: {:?}", e);
+    let mut send_task = tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            if sender.send(Message::Text(msg)).await.is_err() {
+                eprintln!("can't response to client");
             }
         }
-    }
-    {
-        let mut game_room = game_room.lock().await;
-        game_room.remove_player(player_id);
-    }
+    });
+    let game_room_a = game_room.clone();
+    let mut recv_task = tokio::spawn(async move {
+        while let Some(msg) = receiver.next().await {
+            if let Err(e) = msg {
+                eprintln!("Error receiving WebSocket message: {:?}", e);
+                continue;
+            }
+            if let Message::Text(text) = msg.unwrap() {
+                let res = serde_json::from_str::<Position>(&text);
+                if let Err(e) = res {
+                    eprintln!("bad request with {}, {}", text, e);
+                    continue;
+                }
+                let pos = res.unwrap();
+                eprintln!("making move at {:?}", pos);
+                let mut game_room = game_room_a.lock().await;
+                if game_room.place(pos.x, pos.y, player_id).is_err() {
+                    eprintln!("bad request {}", text);
+                    continue;
+                }
+                let res = serde_json::to_string(&game_room.board);
+                if let Err(e) = res {
+                    eprintln!("server error, can't serialize board! {}", e);
+                    continue;
+                }
+                let message = res.unwrap();
+                let _ = tx.send(message.clone());
+            }
+        }
+    });
+    // If any one of the tasks run to completion, we abort the other.
+    tokio::select! {
+        _ = (&mut send_task) => recv_task.abort(),
+        _ = (&mut recv_task) => send_task.abort(),
+    };
+    println!("{} has left the room", player_id);
+    // tx.send("player_id has left the room");
+    let mut game_room = game_room.lock().await;
+    game_room.remove_player(player_id);
 }
 
 #[debug_handler]
