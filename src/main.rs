@@ -24,9 +24,9 @@ async fn main() {
 
     let addr = ([127, 0, 0, 1], 8080).into();
     let app = app.into_make_service_with_connect_info::<SocketAddr>();
+    println!("Server is running at {:?}", addr);
     axum::Server::bind(&addr)
         .serve(app)
         .await
         .expect("Could not start server");
-    println!("Server is running at {:?}", addr);
 }

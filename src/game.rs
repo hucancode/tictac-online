@@ -1,9 +1,10 @@
 const BOARD_WIDTH: usize = 10;
 const BOARD_HEIGHT: usize = 10;
 
+pub type Board = [[Option<usize>; BOARD_HEIGHT]; BOARD_WIDTH];
 #[derive(Debug, Clone)]
 pub struct GameState {
-    pub board: [[Option<usize>; BOARD_HEIGHT]; BOARD_WIDTH],
+    pub board: Board,
     pub current_turn: usize,
     player_count: usize,
 }
