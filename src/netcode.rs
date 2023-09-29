@@ -1,7 +1,8 @@
 use super::game::GameState;
+use super::protocol::ClientMessage;
+use super::protocol::ServerMessage;
 use super::room::GameRoom;
 use super::room::GameRooms;
-use crate::game::Board;
 use axum::debug_handler;
 use axum::extract::{
     ws::{Message, WebSocket},
@@ -9,32 +10,9 @@ use axum::extract::{
 };
 use axum::response::IntoResponse;
 use futures::{sink::SinkExt, stream::StreamExt};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Position {
-    pub x: usize,
-    pub y: usize,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum ServerMessage {
-    BoardUpdated { board: Board, turn: usize },
-    Chat { who: String, content: String },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum ClientMessage {
-    Place { x: usize, y: usize },
-    Chat { content: String },
-    Register { name: String },
-    EnterRoom { id: usize },
-}
 
 async fn handle_move(socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
     let (mut sender, mut receiver) = socket.split();
@@ -43,13 +21,9 @@ async fn handle_move(socket: WebSocket, game_room: GameRoom, tx: Sender<String>)
     {
         let mut game_room = game_room.lock().await;
         player_id = game_room.add_player();
-        if let Ok(message) = serde_json::to_string(&ServerMessage::BoardUpdated {
-            board: game_room.board.clone(),
-            turn: game_room.current_turn,
-        }) {
-            if sender.send(Message::Text(message)).await.is_err() {
-                eprintln!("can't response to client");
-            }
+        let message = String::from(ServerMessage::from(game_room.clone()));
+        if !message.is_empty() && sender.send(Message::Text(message)).await.is_err() {
+            eprintln!("can't response to client");
         }
     }
 
@@ -68,45 +42,35 @@ async fn handle_move(socket: WebSocket, game_room: GameRoom, tx: Sender<String>)
                 continue;
             }
             if let Message::Text(text) = msg.unwrap() {
-                let res = serde_json::from_str::<ClientMessage>(&text);
-                if let Err(e) = res {
-                    eprintln!("bad request with {}, {}", text, e);
-                    continue;
-                }
-                let message = res.unwrap();
-                eprintln!("server received: {:?}", message);
+                let message = ClientMessage::from(text);
+                println!("server received: {:?}", message);
                 match message {
                     ClientMessage::Place { x, y } => {
                         let mut game_room = game_room_a.lock().await;
                         if let Err(msg) = game_room.place(x, y, player_id) {
-                            eprintln!("bad request {}", msg);
+                            eprintln!("Bad request {}", msg);
                             continue;
                         }
-                        let res = serde_json::to_string(&ServerMessage::BoardUpdated {
-                            board: game_room.board.clone(),
-                            turn: game_room.current_turn,
-                        });
-                        if let Err(e) = res {
-                            eprintln!("server error, can't serialize board! {}", e);
-                            continue;
+                        if let Err(e) =
+                            tx.send(String::from(ServerMessage::from(game_room.clone())))
+                        {
+                            eprintln!("Server error while sending message: {}", e);
                         }
-                        let message = res.unwrap();
-                        let _ = tx.send(message.clone());
                     }
                     ClientMessage::Chat { content } => {
-                        let res = serde_json::to_string(&ServerMessage::Chat {
+                        if let Err(e) = tx.send(String::from(ServerMessage::Chat {
                             who: "some one".to_string(),
                             content,
-                        });
-                        if let Err(e) = res {
-                            eprintln!("server error, can't serialize board! {}", e);
-                            continue;
+                        })) {
+                            eprintln!("Server error while sending message: {}", e);
                         }
-                        let message = res.unwrap();
-                        let _ = tx.send(message.clone());
                     }
-                    ClientMessage::Register { name } => {}
-                    ClientMessage::EnterRoom { id } => {}
+                    ClientMessage::Register { name } => {
+                        println!("player {} registered with name {}", player_id, name);
+                    }
+                    ClientMessage::EnterRoom { id } => {
+                        println!("player {} enter room {}", player_id, id);
+                    }
                     _ => {}
                 };
             }

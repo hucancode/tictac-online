@@ -1,5 +1,6 @@
 mod game;
 mod netcode;
+mod protocol;
 mod room;
 use axum::routing::get;
 use axum::Extension;

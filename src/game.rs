@@ -29,12 +29,15 @@ impl GameState {
         self.player_count -= 1;
     }
 
-    pub fn place(&mut self, x: usize, y: usize, player: usize) -> Result<(), &'static str> {
+    pub fn place(&mut self, x: usize, y: usize, player: usize) -> Result<(), String> {
         if self.board[x][y].is_some() {
-            return Err("Invalid move");
+            return Err(format!("Invalid move"));
         }
         if player != self.current_turn {
-            return Err("Can't accept this player at current turn");
+            return Err(format!(
+                "Can't accept action from player {} at turn {}",
+                player, self.current_turn
+            ));
         }
         self.board[x][y] = Some(player);
         self.current_turn += 1;
