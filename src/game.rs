@@ -14,7 +14,6 @@ pub struct GameState {
     players: Vec<usize>,
     next_id: usize,
     ready_players: HashSet<usize>,
-    rematch_votes: HashSet<usize>,
     phase: GamePhase,
 }
 
@@ -23,13 +22,6 @@ pub enum GamePhase {
     Ready,
     Action,
     Scoreboard,
-}
-
-#[derive(Debug)]
-pub enum VoteResult {
-    Pending,
-    Rematch,
-    Dismiss,
 }
 
 #[derive(Debug)]
@@ -47,7 +39,6 @@ impl GameState {
             players: Vec::new(),
             next_id: 0,
             ready_players: HashSet::new(),
-            rematch_votes: HashSet::new(),
             phase: GamePhase::Ready,
         }
     }
@@ -63,7 +54,6 @@ impl GameState {
             self.players.swap_remove(i);
         }
         self.ready_players.remove(&player);
-        self.rematch_votes.remove(&player);
     }
 
     fn count_trail(&self, x: usize, y: usize) -> usize {
@@ -118,7 +108,7 @@ impl GameState {
         if self.count_trail(x, y) >= WINNING_TRAIL {
             self.current_turn = self.next_id;
             self.phase = GamePhase::Scoreboard;
-            return MoveResult::Ok;
+            return MoveResult::Win;
         }
         if let Ok(i) = self.players.binary_search(&self.current_turn) {
             let i = (i + 1) % self.players.len();
@@ -133,12 +123,16 @@ impl GameState {
         }
     }
 
+    pub fn get_acting_players(&mut self) -> Vec<usize> {
+        self.players[0..ACTING_PLAYER].to_vec()
+    }
+
     pub fn ready_vote(&mut self, player_id: usize, ready: bool) -> bool {
         if let Ok(i) = self.players.binary_search(&player_id) {
             if i < ACTING_PLAYER {
                 if ready {
                     self.ready_players.insert(player_id);
-                    if self.rematch_votes.len() >= ACTING_PLAYER {
+                    if self.ready_players.len() >= ACTING_PLAYER {
                         self.reset();
                         self.phase = GamePhase::Action;
                         return true;
@@ -151,24 +145,6 @@ impl GameState {
         return false;
     }
 
-    pub fn rematch_vote(&mut self, player_id: usize, accept: bool) -> VoteResult {
-        if let Ok(i) = self.players.binary_search(&player_id) {
-            if i < ACTING_PLAYER {
-                if accept {
-                    self.rematch_votes.insert(player_id);
-                    if self.rematch_votes.len() >= ACTING_PLAYER {
-                        self.reset();
-                        self.phase = GamePhase::Action;
-                        return VoteResult::Rematch;
-                    }
-                } else {
-                    return VoteResult::Dismiss;
-                }
-            }
-        }
-        return VoteResult::Pending;
-    }
-
     fn reset(&mut self) {
         for i in 0..BOARD_WIDTH {
             for j in 0..BOARD_HEIGHT {
@@ -176,6 +152,6 @@ impl GameState {
             }
         }
         self.current_turn = *self.players.get(0).unwrap_or(&self.next_id);
-        self.rematch_votes.clear();
+        self.ready_players.clear();
     }
 }

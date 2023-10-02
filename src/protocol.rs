@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type")]
 pub enum ServerMessage {
     JoinedRoom { your_id: usize },
-    GameStarted,
+    GameStarted { players: Vec<usize> },
     GameState { board: Board, turn: usize },
     GameEnd { winner_x: usize, winner_y: usize },
     RoomDismissed,

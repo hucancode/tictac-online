@@ -1,5 +1,3 @@
-use crate::game::VoteResult;
-
 use super::game::GameState;
 use super::game::MoveResult;
 use super::protocol::ClientMessage;
@@ -29,8 +27,8 @@ async fn enter_room(
     let mut game_room = game_room.lock().await;
     let id = game_room.add_player();
     let message = String::from(ServerMessage::JoinedRoom { your_id: id });
-    if !message.is_empty() && sender.send(Message::Text(message)).await.is_err() {
-        eprintln!("can't response to client");
+    if !message.is_empty() && sender.send(Message::Text(message.clone())).await.is_err() {
+        eprintln!("can't response to client with {}", message);
         return None;
     }
     return Some(id);
@@ -42,8 +40,8 @@ fn handle_send(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg)).await.is_err() {
-                eprintln!("can't response to client");
+            if sender.send(Message::Text(msg.clone())).await.is_err() {
+                eprintln!("can't response to client with {}", msg);
             }
         }
     })
@@ -64,7 +62,7 @@ fn handle_receive(
             }
             if let Message::Text(text) = msg.unwrap() {
                 let message = ClientMessage::from(text);
-                // println!("server received: {:?}", message);
+                println!("Server received: {:?}", message);
                 match message {
                     ClientMessage::Place { x, y } => {
                         let mut game_room = game_room.lock().await;
@@ -95,7 +93,9 @@ fn handle_receive(
                     ClientMessage::ReadyVote { accept } => {
                         let mut game_room = game_room.lock().await;
                         if game_room.ready_vote(player_id, accept) {
-                            if let Err(e) = tx.send(String::from(ServerMessage::GameStarted)) {
+                            if let Err(e) = tx.send(String::from(ServerMessage::GameStarted {
+                                players: game_room.get_acting_players()
+                            })) {
                                 eprintln!("Server error while sending message: {}", e);
                             }
                             if let Err(e) =
@@ -103,23 +103,6 @@ fn handle_receive(
                             {
                                 eprintln!("Server error while sending message: {}", e);
                             }
-                        }
-                    }
-                    ClientMessage::RematchVote { accept } => {
-                        let mut game_room = game_room.lock().await;
-                        match game_room.rematch_vote(player_id, accept) {
-                            VoteResult::Dismiss => {
-                                if let Err(e) = tx.send(String::from(ServerMessage::RoomDismissed))
-                                {
-                                    eprintln!("Server error while sending chat message: {}", e);
-                                }
-                            }
-                            VoteResult::Rematch => {
-                                if let Err(e) = tx.send(String::from(ServerMessage::GameStarted)) {
-                                    eprintln!("Server error while sending chat message: {}", e);
-                                }
-                            }
-                            _ => {}
                         }
                     }
                     ClientMessage::Chat { content } => {
