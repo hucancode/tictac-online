@@ -1,4 +1,7 @@
+use crate::game::VoteResult;
+
 use super::game::GameState;
+use super::game::MoveResult;
 use super::protocol::ClientMessage;
 use super::protocol::ServerMessage;
 use super::room::GameRoom;
@@ -18,19 +21,19 @@ use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
+const DEFAULT_PLAYER_NAME: &str = "someone";
 async fn enter_room(
     game_room: GameRoom,
     sender: &mut SplitSink<WebSocket, Message>,
 ) -> Option<usize> {
     let mut game_room = game_room.lock().await;
-    let player_id = game_room.add_player();
-    let message = String::from(ServerMessage::from(game_room.clone()));
+    let id = game_room.add_player();
+    let message = String::from(ServerMessage::JoinedRoom { your_id: id });
     if !message.is_empty() && sender.send(Message::Text(message)).await.is_err() {
         eprintln!("can't response to client");
-        None
-    } else {
-        Some(player_id)
+        return None;
     }
+    return Some(id);
 }
 
 fn handle_send(
@@ -53,7 +56,7 @@ fn handle_receive(
     player_id: usize,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let mut player_name = "some one".to_string();
+        let mut player_name = DEFAULT_PLAYER_NAME.to_string();
         while let Some(msg) = receiver.next().await {
             if let Err(e) = msg {
                 eprintln!("Error receiving WebSocket message: {:?}", e);
@@ -61,18 +64,62 @@ fn handle_receive(
             }
             if let Message::Text(text) = msg.unwrap() {
                 let message = ClientMessage::from(text);
-                println!("server received: {:?}", message);
+                // println!("server received: {:?}", message);
                 match message {
                     ClientMessage::Place { x, y } => {
                         let mut game_room = game_room.lock().await;
-                        if let Err(msg) = game_room.place(x, y, player_id) {
-                            eprintln!("Bad request {}", msg);
-                            continue;
+                        match game_room.place(x, y, player_id) {
+                            MoveResult::Ok => {
+                                if let Err(e) =
+                                    tx.send(String::from(ServerMessage::from(game_room.clone())))
+                                {
+                                    eprintln!("Server error while sending message: {}", e);
+                                }
+                            }
+                            MoveResult::Win => {
+                                if let Err(e) =
+                                    tx.send(String::from(ServerMessage::from(game_room.clone())))
+                                {
+                                    eprintln!("Server error while sending message: {}", e);
+                                }
+                                if let Err(e) = tx.send(String::from(ServerMessage::GameEnd {
+                                    winner_x: x,
+                                    winner_y: y,
+                                })) {
+                                    eprintln!("Server error while sending message: {}", e);
+                                }
+                            }
+                            _ => {}
                         }
-                        if let Err(e) =
-                            tx.send(String::from(ServerMessage::from(game_room.clone())))
-                        {
-                            eprintln!("Server error while sending message: {}", e);
+                    }
+                    ClientMessage::ReadyVote { accept } => {
+                        let mut game_room = game_room.lock().await;
+                        if game_room.ready_vote(player_id, accept) {
+                            if let Err(e) = tx.send(String::from(ServerMessage::GameStarted)) {
+                                eprintln!("Server error while sending message: {}", e);
+                            }
+                            if let Err(e) =
+                                tx.send(String::from(ServerMessage::from(game_room.clone())))
+                            {
+                                eprintln!("Server error while sending message: {}", e);
+                            }
+                        }
+                    }
+                    ClientMessage::RematchVote { accept } => {
+                        let mut game_room = game_room.lock().await;
+                        match game_room.rematch_vote(player_id, accept) {
+                            VoteResult::Dismiss => {
+                                if let Err(e) = tx.send(String::from(ServerMessage::RoomDismissed))
+                                {
+                                    eprintln!("Server error while sending chat message: {}", e);
+                                }
+                            }
+                            VoteResult::Rematch => {
+                                if let Err(e) = tx.send(String::from(ServerMessage::GameStarted)) {
+                                    eprintln!("Server error while sending chat message: {}", e);
+                                }
+                            }
+                            _ => {}
                         }
                     }
                     ClientMessage::Chat { content } => {
