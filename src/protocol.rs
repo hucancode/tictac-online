@@ -15,7 +15,6 @@ pub enum ClientMessage {
     Place { x: usize, y: usize },
     Chat { content: String },
     Register { name: String },
-    EnterRoom { id: usize },
     Unknown,
 }
 
@@ -34,6 +33,7 @@ impl From<GameState> for ServerMessage {
         }
     }
 }
+
 impl From<String> for ClientMessage {
     fn from(input: String) -> Self {
         let res = serde_json::from_str::<ClientMessage>(&input);

@@ -5,7 +5,7 @@ mod room;
 use axum::routing::get;
 use axum::Extension;
 use axum::Router;
-use netcode::handle_connection;
+use netcode::handle_http;
 use room::GameRooms;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -19,7 +19,7 @@ async fn main() {
     let (tx, _) = broadcast::channel::<String>(1024);
 
     let app = Router::new()
-        .route("/ws/:room", get(handle_connection))
+        .route("/ws/:room", get(handle_http))
         .layer(Extension(game_rooms.clone()))
         .layer(Extension(tx.clone()));
 
