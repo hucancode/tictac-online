@@ -29,9 +29,10 @@ async fn enter_room(
     let message = String::from(ServerMessage::JoinedRoom { your_id: id });
     if !message.is_empty() && sender.send(Message::Text(message.clone())).await.is_err() {
         eprintln!("can't response to client with {}", message);
-        return None;
+        None
+    } else {
+        Some(id)
     }
-    return Some(id);
 }
 
 fn handle_send(

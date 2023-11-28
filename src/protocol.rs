@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub enum ServerMessage {
     JoinedRoom { your_id: usize },
     GameStarted { players: Vec<usize> },
-    GameState { board: Board, turn: usize },
+    GameState { board: Box<Board>, turn: usize },
     GameEnd { winner_x: usize, winner_y: usize },
     RoomDismissed,
     Chat { who: String, content: String },
@@ -34,7 +34,7 @@ impl From<ServerMessage> for String {
 impl From<GameState> for ServerMessage {
     fn from(input: GameState) -> Self {
         Self::GameState {
-            board: input.board,
+            board: Box::new(input.board),
             turn: input.current_turn,
         }
     }

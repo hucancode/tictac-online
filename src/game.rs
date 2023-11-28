@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::collections::HashSet;
 
 const BOARD_WIDTH: usize = 10;
@@ -30,7 +29,11 @@ pub enum MoveResult {
     Err,
     Win,
 }
-
+impl Default for GameState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl GameState {
     pub fn new() -> Self {
         Self {
@@ -60,36 +63,35 @@ impl GameState {
         if self.board[x][y].is_none() {
             return 0;
         }
+        let traverse = |dx, dy, v| {
+            let mut ret = 0;
+            let mut i = x as i32 + dx;
+            let mut j = y as i32 + dy;
+            while i >= 0
+                && i < self.board.len() as i32
+                && j >= 0
+                && j < self.board[0].len() as i32
+                && self.board[i as usize][j as usize].is_some()
+                && self.board[i as usize][j as usize].unwrap() == v
+            {
+                ret += 1;
+                i += dx;
+                j += dy;
+            }
+            ret
+        };
         let v = self.board[x][y].unwrap();
-        let mut ret = 1;
-        let moves = [
+        const MOVES: [(i32, i32); 4] = [
             (1, 1),  // diagonal 1
             (1, -1), // diagonal 2
             (0, 1),  // vertical
             (1, 0),  // horizontal
         ];
-        for (dx, dy) in moves {
-            let mut len = 1;
-            let mut traverse = |dx, dy| {
-                let mut i = x as i32 + dx;
-                let mut j = y as i32 + dy;
-                while i >= 0
-                    && i < self.board.len() as i32
-                    && j >= 0
-                    && j < self.board[0].len() as i32
-                    && self.board[i as usize][j as usize].is_some()
-                    && self.board[i as usize][j as usize].unwrap() == v
-                {
-                    len += 1;
-                    i += dx;
-                    j += dy;
-                }
-            };
-            traverse(dx, dy);
-            traverse(-dx, -dy);
-            ret = max(ret, len);
-        }
-        return ret;
+        MOVES
+            .into_iter()
+            .map(|(dx, dy)| traverse(dx, dy, v) + traverse(-dx, -dy, v) + 1)
+            .max()
+            .unwrap_or(1)
     }
 
     pub fn place(&mut self, x: usize, y: usize, player: usize) -> MoveResult {
@@ -113,13 +115,13 @@ impl GameState {
         if let Ok(i) = self.players.binary_search(&self.current_turn) {
             let i = (i + 1) % self.players.len();
             self.current_turn = self.players[i];
-            return MoveResult::Ok;
+            MoveResult::Ok
         } else {
             eprintln!(
                 "Internal server error, player {} doesn't exist in player list {:?}",
                 self.current_turn, self.players
             );
-            return MoveResult::Err;
+            MoveResult::Err
         }
     }
 
@@ -142,7 +144,7 @@ impl GameState {
                 }
             }
         }
-        return false;
+        false
     }
 
     fn reset(&mut self) {
@@ -151,7 +153,7 @@ impl GameState {
                 self.board[i][j] = None;
             }
         }
-        self.current_turn = *self.players.get(0).unwrap_or(&self.next_id);
+        self.current_turn = *self.players.first().unwrap_or(&self.next_id);
         self.ready_players.clear();
     }
 }
