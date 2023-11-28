@@ -94,7 +94,7 @@ fn handle_receive(
                         let mut game_room = game_room.lock().await;
                         if game_room.ready_vote(player_id, accept) {
                             if let Err(e) = tx.send(String::from(ServerMessage::GameStarted {
-                                players: game_room.get_acting_players()
+                                players: game_room.get_acting_players(),
                             })) {
                                 eprintln!("Server error while sending message: {}", e);
                             }
