@@ -5,7 +5,9 @@ import path from 'path';
 export default defineConfig({
 	resolve: {
 		alias: {
-			$styles: path.resolve(__dirname, './src/styles')
+			$icons: path.resolve(__dirname, './src/icons'),
+			$styles: path.resolve(__dirname, './src/styles'),
+			$components: path.resolve(__dirname, './src/components')
 		}
 	},
 	plugins: [sveltekit()]
