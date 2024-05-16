@@ -142,7 +142,11 @@ impl GameState {
                 } else {
                     self.ready_players.remove(&player_id);
                 }
+            } else {
+                println!("Player {} is not allowed to play, only the first 2 players can play {:?}", player_id, self.players);
             }
+        } else {
+            eprintln!("Player {} doesn't exist in player list {:?}", player_id, self.players);
         }
         false
     }
