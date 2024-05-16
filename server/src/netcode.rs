@@ -10,6 +10,7 @@ use axum::extract::{
     Extension, Path, WebSocketUpgrade,
 };
 use axum::response::IntoResponse;
+use axum::Json;
 use futures::{
     sink::SinkExt,
     stream::{SplitSink, SplitStream, StreamExt},
@@ -22,10 +23,11 @@ use tokio::task::JoinHandle;
 const DEFAULT_PLAYER_NAME: &str = "someone";
 async fn enter_room(
     game_room: GameRoom,
+    player: String,
     sender: &mut SplitSink<WebSocket, Message>,
 ) -> Option<usize> {
     let mut game_room = game_room.lock().await;
-    let id = game_room.add_player();
+    let id = game_room.add_player(player);
     let message = String::from(ServerMessage::JoinedRoom { your_id: id });
     if !message.is_empty() && sender.send(Message::Text(message.clone())).await.is_err() {
         eprintln!("can't response to client with {}", message);
@@ -129,14 +131,13 @@ fn handle_receive(
     })
 }
 
-async fn handle_ws(socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
+async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: Sender<String>) {
     let (mut sender, receiver) = socket.split();
+    let player_id = match enter_room(game_room.clone(), player.clone(), &mut sender).await {
+        Some(id) => id,
+        None => return,
+    };
     let rx = tx.subscribe();
-    let player_id = enter_room(game_room.clone(), &mut sender).await;
-    if player_id.is_none() {
-        return;
-    }
-    let player_id = player_id.unwrap();
     let mut send_task = handle_send(sender, rx);
     let mut recv_task = handle_receive(receiver, tx, game_room.clone(), player_id);
     // If any one of the tasks run to completion, we abort the other.
@@ -145,15 +146,20 @@ async fn handle_ws(socket: WebSocket, game_room: GameRoom, tx: Sender<String>) {
         _ = (&mut recv_task) => send_task.abort(),
     };
     let mut game_room = game_room.lock().await;
-    game_room.remove_player(player_id);
+    game_room.remove_player(player);
 }
 
+#[derive(serde::Deserialize)]
+pub struct EnterRoomRequest {
+    user: String,
+}
 #[debug_handler]
 pub async fn handle_http(
     ws: WebSocketUpgrade,
     Path(room_name): Path<String>,
     Extension(state): Extension<GameRooms>,
     Extension(tx): Extension<Sender<String>>,
+    Json(payload): Json<EnterRoomRequest>,
 ) -> impl IntoResponse {
     let game_rooms = state.clone();
     let tx = tx.clone();
@@ -162,5 +168,5 @@ pub async fn handle_http(
         .entry(room_name.clone())
         .or_insert_with(|| Arc::new(Mutex::new(GameState::new())))
         .clone();
-    ws.on_upgrade(move |ws| handle_ws(ws, game_room, tx))
+    ws.on_upgrade(move |ws| handle_ws(ws, payload.user, game_room, tx))
 }

@@ -27,7 +27,7 @@ pub enum ClientMessage {
 impl From<ServerMessage> for String {
     fn from(input: ServerMessage) -> Self {
         let res = serde_json::to_string(&input);
-        res.unwrap_or(String::from(""))
+        res.unwrap_or(String::new())
     }
 }
 
