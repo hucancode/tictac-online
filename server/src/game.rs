@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 
 const BOARD_WIDTH: usize = 10;
 const BOARD_HEIGHT: usize = 10;
@@ -10,9 +9,11 @@ pub type Board = [[Option<usize>; BOARD_HEIGHT]; BOARD_WIDTH];
 pub struct GameState {
     pub board: Board,
     pub current_turn: usize,
-    players: Vec<String>,
-    ready_status: Vec<bool>,
-    phase: GamePhase,
+    pub room_creator: Option<String>,
+    pub members: Vec<String>,  // All people in room
+    pub player_queue: Vec<String>,  // People who stepped up to play
+    pub active_players: Vec<String>,  // Current 2 players in game
+    pub phase: GamePhase,
 }
 
 #[derive(Debug, Clone)]
@@ -38,23 +39,35 @@ impl GameState {
         Self {
             board: [[None; BOARD_HEIGHT]; BOARD_WIDTH],
             current_turn: usize::MAX,
-            players: Vec::new(),
-            ready_status: Vec::new(),
+            room_creator: None,
+            members: Vec::new(),
+            player_queue: Vec::new(),
+            active_players: Vec::new(),
             phase: GamePhase::Ready,
         }
     }
 
-    pub fn add_player(&mut self, player: String) -> usize {
-        let ret = self.players.len();
-        self.players.push(player);
-        self.ready_status.push(false);
-        ret
+    pub fn add_member(&mut self, member: String) -> usize {
+        let id = self.members.len();
+        
+        // First member becomes room creator
+        if self.room_creator.is_none() {
+            self.room_creator = Some(member.clone());
+        }
+        
+        self.members.push(member);
+        id
     }
 
-    pub fn remove_player(&mut self, player: String) {
-        if let Some(i) = self.players.iter().position(|p| p == &player) {
-            self.players.remove(i);
-            self.ready_status.remove(i);
+    pub fn remove_member(&mut self, member: String) {
+        // Remove from all lists
+        self.members.retain(|m| m != &member);
+        self.player_queue.retain(|m| m != &member);
+        self.active_players.retain(|m| m != &member);
+        
+        // Transfer room creator if needed
+        if self.room_creator.as_ref() == Some(&member) {
+            self.room_creator = self.members.first().cloned();
         }
     }
 
@@ -93,23 +106,35 @@ impl GameState {
             .unwrap_or(1)
     }
 
-    pub fn place(&mut self, x: usize, y: usize, player_id: usize) -> MoveResult {
-        if player_id >= self.players.len() {
-            eprintln!("Invalid player id {}", player_id);
+    pub fn place(&mut self, x: usize, y: usize, member_id: usize) -> MoveResult {
+        if member_id >= self.members.len() {
+            eprintln!("Invalid member id {}", member_id);
             return MoveResult::Err;
         }
+        
+        let member = &self.members[member_id];
+        
+        // Check if member is an active player
+        let player_index = match self.active_players.iter().position(|p| p == member) {
+            Some(idx) => idx,
+            None => {
+                eprintln!("Member {} is not an active player", member);
+                return MoveResult::Err;
+            }
+        };
+        
         if self.board[x][y].is_some() {
-            eprintln!("Invalid move");
+            eprintln!("Invalid move - position occupied");
             return MoveResult::Err;
         }
-        if player_id != self.current_turn {
-            eprintln!(
-                "Can't accept action from player {} at turn {}",
-                self.players[player_id], self.current_turn
-            );
+        
+        if player_index != self.current_turn {
+            eprintln!("Not this player's turn: player_index={}, current_turn={}, member={}", 
+                player_index, self.current_turn, member);
             return MoveResult::Err;
         }
-        self.board[x][y] = Some(player_id);
+        
+        self.board[x][y] = Some(player_index);
         if self.count_trail(x, y) >= WINNING_TRAIL {
             self.current_turn = usize::MAX;
             self.phase = GamePhase::Scoreboard;
@@ -123,19 +148,70 @@ impl GameState {
         (0..ACTING_PLAYER).collect()
     }
 
-    pub fn ready_vote(&mut self, player_id: usize, ready: bool) -> bool {
-        if player_id >= self.players.len() {
-            eprintln!("Invalid player id {}", player_id);
+    pub fn step_up(&mut self, member_id: usize) -> bool {
+        if member_id >= self.members.len() {
+            eprintln!("Invalid member id {}", member_id);
             return false;
         }
-        self.ready_status[player_id] = ready;
-        if self.ready_status.iter().take(ACTING_PLAYER).all(|&r| r) {
-            self.reset();
-            self.phase = GamePhase::Action;
-            true
-        } else {
-            false
+        
+        let member = self.members[member_id].clone();
+        
+        // Check if already in queue
+        if self.player_queue.contains(&member) {
+            return false;
         }
+        
+        self.player_queue.push(member);
+        true
+    }
+    
+    pub fn step_down(&mut self, member_id: usize) -> bool {
+        if member_id >= self.members.len() {
+            return false;
+        }
+        
+        let member = &self.members[member_id];
+        self.player_queue.retain(|m| m != member);
+        true
+    }
+    
+    pub fn start_game(&mut self, member_id: usize) -> bool {
+        if member_id >= self.members.len() {
+            return false;
+        }
+        
+        // Only room creator can start game
+        if self.room_creator.as_ref() != Some(&self.members[member_id]) {
+            eprintln!("Only room creator can start the game");
+            return false;
+        }
+        
+        // Need at least 2 players in queue
+        if self.player_queue.len() < 2 {
+            eprintln!("Need at least 2 players in queue");
+            return false;
+        }
+        
+        // Take first 2 from queue as active players
+        self.active_players = self.player_queue.drain(..2).collect();
+        eprintln!("Game starting with players: {:?}", self.active_players);
+        self.reset();
+        self.phase = GamePhase::Action;
+        true
+    }
+    
+    pub fn is_room_creator(&self, member_id: usize) -> bool {
+        member_id < self.members.len() && self.room_creator.as_ref() == Some(&self.members[member_id])
+    }
+    
+    pub fn is_active_player(&self, member_id: usize) -> bool {
+        member_id < self.members.len() && self.active_players.contains(&self.members[member_id])
+    }
+    
+    pub fn get_member_indices(&self, names: &[String]) -> Vec<usize> {
+        names.iter()
+            .filter_map(|name| self.members.iter().position(|m| m == name))
+            .collect()
     }
 
     fn reset(&mut self) {
@@ -144,6 +220,6 @@ impl GameState {
                 self.board[i][j] = None;
             }
         }
-        self.current_turn = 0;
+        self.current_turn = 0;  // First player's turn
     }
 }

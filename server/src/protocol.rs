@@ -5,21 +5,33 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
-    JoinedRoom { your_id: usize },
-    GameStarted { players: Vec<usize> },
+    JoinedRoom { 
+        your_id: usize, 
+        is_room_creator: bool,
+        room_creator: String,
+        members: Vec<String>,
+        player_queue: Vec<String>,
+    },
+    GameStarted { players: Vec<String> },
     GameState { board: Box<Board>, turn: usize },
-    GameEnd { winner_x: usize, winner_y: usize },
-    RoomDismissed,
+    GameEnd { winner: String, winner_x: usize, winner_y: usize },
+    RoomStateUpdate {
+        members: Vec<String>,
+        player_queue: Vec<String>,
+        room_creator: String,
+    },
     Chat { who: String, content: String },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
-    ReadyVote { accept: bool },
+    StepUp,
+    StepDown,
+    StartGame,
     Place { x: usize, y: usize },
     Chat { content: String },
-    RematchVote { accept: bool },
+    KickMember { member_id: usize },
     Register { name: String },
     Unknown,
 }

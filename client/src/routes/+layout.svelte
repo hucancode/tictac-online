@@ -1,6 +1,6 @@
 <script>
 	import '$styles/app.css';
-	import Login from '$components/login.svelte';
+	import Login from '$components/Login.svelte';
 </script>
 <nav>
 	<Login />
