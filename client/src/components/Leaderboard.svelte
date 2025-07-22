@@ -87,12 +87,15 @@
                       </span>
                     </div>
                   {/if}
-                  <span class="font-medium">
+                  <a 
+                    href="/player/{entry.user_id}"
+                    class="font-medium hover:text-blue-600 hover:underline"
+                  >
                     {entry.username}
                     {#if auth.user?.username === entry.username}
                       <span class="text-sm text-blue-600">(You)</span>
                     {/if}
-                  </span>
+                  </a>
                 </div>
               </td>
               <td class="px-6 py-4 text-right font-semibold text-blue-600">

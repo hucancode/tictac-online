@@ -1,4 +1,4 @@
-.PHONY: help build-server build-client deploy clean minikube-start minikube-stop status logs-server logs-client logs-db dashboard start-port-forward dev stop-server stop-client start-server start-client reset
+.PHONY: help build-server build-client deploy clean minikube-start minikube-stop status logs-server logs-client logs-db dashboard start-port-forward dev stop-server stop-client start-server start-client redeploy-server redeploy-client
 
 # Variables
 MINIKUBE_PROFILE ?= tictac
@@ -134,3 +134,16 @@ start-client: ## Restart client deployment
 	kubectl scale deployment/client -n tictac --replicas=1
 	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/client
 	@echo "$(GREEN)✓ Client restarted$(NC)"
+
+# Rebuild and redeploy targets (maintains port forwarding)
+redeploy-server: build-server ## Rebuild and redeploy server only
+	kubectl rollout restart deployment/server -n tictac
+	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/server
+	@$(MAKE) start-port-forward
+	@echo "$(GREEN)✓ Server redeployed$(NC)"
+
+redeploy-client: build-client ## Rebuild and redeploy client only
+	kubectl rollout restart deployment/client -n tictac
+	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/client
+	@$(MAKE) start-port-forward
+	@echo "$(GREEN)✓ Client redeployed$(NC)"

@@ -60,6 +60,7 @@ pub struct Claims {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LeaderboardEntry {
     pub rank: usize,
+    pub user_id: String,
     pub username: String,
     pub elo: i32,
     pub games_played: i32,

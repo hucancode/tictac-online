@@ -82,6 +82,10 @@ spec:
       labels:
         app: server
     spec:
+      initContainers:
+      - name: wait-for-surrealdb
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z surrealdb 8000; do echo waiting for surrealdb; sleep 2; done']
       containers:
       - name: server
         image: localhost/tictac-server:latest

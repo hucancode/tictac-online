@@ -103,7 +103,14 @@ fn handle_receive(
                                 {
                                     eprintln!("Server error while sending message: {}", e);
                                 }
-                                let winner = game_room.members[player_id].clone();
+                                let winner_name = game_room.members[player_id].clone();
+                                
+                                // Get winner's email from active players
+                                let winner_email = if player_id < game_room.active_players.len() {
+                                    game_room.active_players[player_id].clone()
+                                } else {
+                                    winner_name.clone() // Fallback, though this shouldn't happen
+                                };
                                 
                                 // Update game in database
                                 if let Some(game_id) = &game_room.game_id {
@@ -117,13 +124,13 @@ fn handle_receive(
                                         eprintln!("Failed to update game board: {}", e);
                                     }
                                     
-                                    if let Err(e) = game_db::end_game(game_id, Some(&winner)).await {
+                                    if let Err(e) = game_db::end_game(game_id, Some(&winner_email)).await {
                                         eprintln!("Failed to end game in database: {}", e);
                                     }
                                 }
                                 
                                 if let Err(e) = tx.send(String::from(ServerMessage::GameEnd {
-                                    winner,
+                                    winner: winner_email.clone(),
                                     winner_x: x,
                                     winner_y: y,
                                 })) {
@@ -251,12 +258,13 @@ async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: S
     
     // Check if disconnected player was in an active game
     if game_room.is_active_player(player_id) && matches!(game_room.phase, super::game::GamePhase::Action) {
-        // Find the other player
-        let other_player = game_room.active_players.iter()
-            .find(|&p| p != &member_name)
+        // Find the other player's email
+        let disconnected_email = game_room.active_players.get(player_id).cloned();
+        let winner_email = game_room.active_players.iter()
+            .find(|&p| disconnected_email.as_ref().map_or(true, |de| p != de))
             .cloned();
         
-        if let Some(winner) = other_player {
+        if let Some(winner) = winner_email {
             // Update game in database
             if let Some(game_id) = &game_room.game_id {
                 // Convert board to database format

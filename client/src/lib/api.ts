@@ -62,6 +62,7 @@ export interface LoginResponse {
 
 export interface LeaderboardEntry {
   rank: number;
+  user_id: string;
   username: string;
   elo: number;
   games_played: number;

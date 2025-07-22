@@ -1,7 +1,6 @@
 <script lang="ts">
 	import RoomManager from '../components/RoomManager.svelte';
 	import Auth from '../components/Auth.svelte';
-	import Profile from '../components/Profile.svelte';
 	import Leaderboard from '../components/Leaderboard.svelte';
 	import { auth, logout } from '$lib/stores/auth.svelte';
 	import { onMount } from 'svelte';
@@ -33,6 +32,8 @@
 	let activePlayers = $state<string[]>([]);
 	let myName = $state('');
 	let gameResult = $state<{ winner: string, x: number, y: number } | null>(null);
+	let returnTimer = $state<number>(5);
+	let stayingToReview = $state<boolean>(false);
 	
 	let isInQueue = $derived(auth.user && playerQueue.includes(auth.user.email));
 	let isActivePlayer = $derived(auth.user && activePlayers.includes(auth.user.email));
@@ -106,6 +107,7 @@
 						symbols.set(idx.toString(), symbol_pool[idx]);
 					});
 					activePlayers = parsed.players;
+					stayingToReview = false;
 					break;
 				case 'GameState':
 					board = parsed.board;
@@ -118,13 +120,19 @@
 						y: parsed.winner_y
 					};
 					logEvent(`Game ended! Winner: ${parsed.winner}`);
-					// Reset after 5 seconds
-					setTimeout(() => {
-						gameResult = null;
-						board = null;
-						symbols.clear();
-						activePlayers = [];
-					}, 5000);
+					returnTimer = 5;
+					
+					// Countdown timer
+					const countdownInterval = setInterval(() => {
+						returnTimer--;
+						if (returnTimer <= 0) {
+							clearInterval(countdownInterval);
+							returnToLobby();
+						}
+					}, 1000);
+					
+					// Store interval ID to clear it if user chooses to stay
+					(window as any).gameEndCountdown = countdownInterval;
 					break;
 				case 'Chat':
 					logEvent(`${parsed.who}: ${parsed.content}`);
@@ -133,6 +141,35 @@
 					logEvent(`Unknown message type: ${parsed.type}`);
 			}
 		});
+	};
+
+	const returnToLobby = () => {
+		// Clear the countdown if it exists
+		if ((window as any).gameEndCountdown) {
+			clearInterval((window as any).gameEndCountdown);
+			delete (window as any).gameEndCountdown;
+		}
+		
+		// Reset game state
+		gameResult = null;
+		board = null;
+		symbols.clear();
+		activePlayers = [];
+		returnTimer = 5;
+		stayingToReview = false;
+	};
+	
+	const stayInGame = () => {
+		// Clear the countdown
+		if ((window as any).gameEndCountdown) {
+			clearInterval((window as any).gameEndCountdown);
+			delete (window as any).gameEndCountdown;
+		}
+		
+		// Just clear the popup but keep the board visible
+		gameResult = null;
+		returnTimer = 5;
+		stayingToReview = true;
 	};
 
 	const place = (x: number, y: number) => {
@@ -196,6 +233,12 @@
 				<div class="flex items-center space-x-4">
 					{#if auth.isAuthenticated}
 						<span class="text-gray-700">Welcome, {auth.user?.username}!</span>
+						<a
+							href="/profile"
+							class="text-blue-600 hover:text-blue-800"
+						>
+							My Profile
+						</a>
 						<button
 							onclick={() => showLeaderboard = !showLeaderboard}
 							class="text-blue-600 hover:text-blue-800"
@@ -218,10 +261,6 @@
 		{#if !auth.isAuthenticated}
 			<Auth onsuccess={() => {}} />
 		{:else}
-			<div class="mb-8">
-				<Profile />
-			</div>
-
 			{#if showLeaderboard}
 				<div class="mb-8">
 					<Leaderboard />
@@ -289,19 +328,43 @@
 						<div class="flex-1">
 							{#if gameResult}
 								<div class="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10">
-									<div class="bg-white p-8 rounded-lg text-center">
+									<div class="bg-white p-8 rounded-lg text-center shadow-xl max-w-md">
 										<h2 class="text-3xl font-bold mb-4">Game Over!</h2>
 										<p class="text-xl mb-4">
 											{#if gameResult.winner === auth.user?.email}
 												<span class="text-green-600">🎉 You Won! 🎉</span>
+											{:else if gameResult.winner === 'Draw'}
+												<span class="text-yellow-600">It's a Draw!</span>
 											{:else}
-												<span class="text-red-600">{gameResult.winner} Won</span>
+												<span class="text-red-600">😔 You Lost</span>
+												<br>
+												<span class="text-sm text-gray-600">{gameResult.winner} Won</span>
 											{/if}
 										</p>
 										{#if gameResult.x > 0}
-											<p class="text-sm text-gray-600">Winning position: {gameResult.x + 1}-{gameResult.y + 1}</p>
+											<p class="text-sm text-gray-600 mb-4">Winning position: ({gameResult.x}, {gameResult.y})</p>
 										{/if}
-										<p class="text-sm text-gray-500 mt-4">Returning to lobby in 5 seconds...</p>
+										
+										<div class="flex gap-4 justify-center mt-6 mb-4">
+											<button
+												onclick={stayInGame}
+												class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+											>
+												Stay & Review
+											</button>
+											<button
+												onclick={returnToLobby}
+												class="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+											>
+												Back to Lobby
+											</button>
+										</div>
+										
+										<p class="text-sm text-gray-500">
+											Auto-returning to lobby in 
+											<span class="font-bold text-lg text-gray-700">{returnTimer}</span> 
+											seconds...
+										</p>
 									</div>
 								</div>
 							{/if}
@@ -322,6 +385,18 @@
 										</div>
 									{/each}
 								</div>
+								
+								{#if stayingToReview}
+									<div class="mt-6 text-center">
+										<button
+											onclick={returnToLobby}
+											class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+										>
+											Back to Lobby
+										</button>
+										<p class="text-sm text-gray-600 mt-2">Game has ended - reviewing board</p>
+									</div>
+								{/if}
 							{:else if activePlayers.length === 0}
 								<div class="text-center py-8 text-gray-500">
 									Waiting for game to start...

@@ -55,6 +55,7 @@ pub async fn get_leaderboard(
 
             LeaderboardEntry {
                 rank: params.offset + index + 1,
+                user_id: user.id.as_ref().unwrap().to_string(),
                 username: user.username,
                 elo: user.elo,
                 games_played: user.games_played,
