@@ -14,6 +14,7 @@ pub struct GameState {
     pub player_queue: Vec<String>,  // People who stepped up to play
     pub active_players: Vec<String>,  // Current 2 players in game
     pub phase: GamePhase,
+    pub game_id: Option<String>,  // Database game record ID
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +45,7 @@ impl GameState {
             player_queue: Vec::new(),
             active_players: Vec::new(),
             phase: GamePhase::Ready,
+            game_id: None,
         }
     }
 

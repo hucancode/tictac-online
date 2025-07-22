@@ -4,12 +4,17 @@ use super::protocol::ClientMessage;
 use super::protocol::ServerMessage;
 use super::room::GameRoom;
 use super::room::GameRooms;
+use crate::auth::{DECODING_KEY};
+use crate::models::Claims;
+use crate::game_db;
 use axum::debug_handler;
 use axum::extract::{
     ws::{Message, WebSocket},
     Extension, Path, WebSocketUpgrade,
 };
 use axum::response::IntoResponse;
+use axum::http::StatusCode;
+use jsonwebtoken::{decode, Validation};
 use futures::{
     sink::SinkExt,
     stream::{SplitSink, SplitStream, StreamExt},
@@ -99,6 +104,24 @@ fn handle_receive(
                                     eprintln!("Server error while sending message: {}", e);
                                 }
                                 let winner = game_room.members[player_id].clone();
+                                
+                                // Update game in database
+                                if let Some(game_id) = &game_room.game_id {
+                                    // Convert board to database format
+                                    let board: Vec<Vec<Option<i32>>> = game_room.board
+                                        .iter()
+                                        .map(|row| row.iter().map(|&cell| cell.map(|p| p as i32)).collect())
+                                        .collect();
+                                    
+                                    if let Err(e) = game_db::update_game_board(game_id, board).await {
+                                        eprintln!("Failed to update game board: {}", e);
+                                    }
+                                    
+                                    if let Err(e) = game_db::end_game(game_id, Some(&winner)).await {
+                                        eprintln!("Failed to end game in database: {}", e);
+                                    }
+                                }
+                                
                                 if let Err(e) = tx.send(String::from(ServerMessage::GameEnd {
                                     winner,
                                     winner_x: x,
@@ -109,6 +132,7 @@ fn handle_receive(
                                 // Move back to preparation phase
                                 game_room.phase = super::game::GamePhase::Ready;
                                 game_room.active_players.clear();
+                                game_room.game_id = None;
                                 
                                 // Send room state update
                                 let _ = tx.send(String::from(ServerMessage::RoomStateUpdate {
@@ -143,6 +167,18 @@ fn handle_receive(
                     ClientMessage::StartGame => {
                         let mut game_room = game_room.lock().await;
                         if game_room.start_game(player_id) {
+                            // Create game in database
+                            if game_room.active_players.len() == 2 {
+                                match game_db::create_game(&game_room.active_players[0], &game_room.active_players[1]).await {
+                                    Ok(game_id) => {
+                                        game_room.game_id = Some(game_id);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Failed to create game in database: {}", e);
+                                    }
+                                }
+                            }
+                            
                             if let Err(e) = tx.send(String::from(ServerMessage::GameStarted {
                                 players: game_room.active_players.clone(),
                             })) {
@@ -221,6 +257,23 @@ async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: S
             .cloned();
         
         if let Some(winner) = other_player {
+            // Update game in database
+            if let Some(game_id) = &game_room.game_id {
+                // Convert board to database format
+                let board: Vec<Vec<Option<i32>>> = game_room.board
+                    .iter()
+                    .map(|row| row.iter().map(|&cell| cell.map(|p| p as i32)).collect())
+                    .collect();
+                
+                if let Err(e) = game_db::update_game_board(game_id, board).await {
+                    eprintln!("Failed to update game board: {}", e);
+                }
+                
+                if let Err(e) = game_db::end_game(game_id, Some(&winner)).await {
+                    eprintln!("Failed to end game in database: {}", e);
+                }
+            }
+            
             let _ = tx.send(String::from(ServerMessage::GameEnd {
                 winner: winner.clone(),
                 winner_x: 0,
@@ -232,6 +285,7 @@ async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: S
             }));
             game_room.phase = super::game::GamePhase::Ready;
             game_room.active_players.clear();
+            game_room.game_id = None;
             
             // Send room state update after game ends by disconnect
             let _ = tx.send(String::from(ServerMessage::RoomStateUpdate {
@@ -260,6 +314,7 @@ async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: S
 #[derive(serde::Deserialize)]
 pub struct EnterRoomRequest {
     user: Option<String>,
+    token: Option<String>,
 }
 #[debug_handler]
 pub async fn handle_http(
@@ -269,6 +324,23 @@ pub async fn handle_http(
     Extension(tx): Extension<Sender<String>>,
     axum::extract::Query(params): axum::extract::Query<EnterRoomRequest>,
 ) -> impl IntoResponse {
+    // Verify JWT token if provided
+    let user = if let Some(token) = params.token {
+        match decode::<Claims>(&token, &DECODING_KEY, &Validation::default()) {
+            Ok(token_data) => token_data.claims.email,
+            Err(_) => return StatusCode::UNAUTHORIZED.into_response(),
+        }
+    } else if let Some(user) = params.user {
+        user
+    } else {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        format!("Guest_{}", timestamp % 10000)
+    };
+    
     let game_rooms = state.clone();
     let tx = tx.clone();
     let mut game_rooms = game_rooms.lock().await;
@@ -276,13 +348,6 @@ pub async fn handle_http(
         .entry(room_name.clone())
         .or_insert_with(|| Arc::new(Mutex::new(GameState::new())))
         .clone();
-    let user = params.user.unwrap_or_else(|| {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        format!("Guest_{}", timestamp % 10000)
-    });
+    
     ws.on_upgrade(move |ws| handle_ws(ws, user, game_room, tx))
 }

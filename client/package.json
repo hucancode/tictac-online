@@ -1,34 +1,32 @@
 {
-  "name": "poker-game",
+  "name": "tictac-online",
   "version": "0.0.1",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check",
     "check:watch": "svelte-kit sync && svelte-check --watch",
-    "lint": "prettier --plugin-search-dir . --check .",
-    "format": "prettier --plugin-search-dir . --write ."
+    "lint": "prettier --check .",
+    "format": "prettier --write ."
   },
   "devDependencies": {
-    "prettier": "^2.8.0",
-    "prettier-plugin-svelte": "^2.10.1",
-    "svelte-check": "^3.4.3"
+    "@sveltejs/adapter-auto": "^3.2.0",
+    "@sveltejs/kit": "^2.5.25",
+    "@sveltejs/vite-plugin-svelte": "^6.0.0-next.3",
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^24.0.0",
+    "prettier": "^3.3.0",
+    "prettier-plugin-svelte": "^3.2.0",
+    "svelte-check": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vite": "^6.3.5"
   },
   "dependencies": {
-    "@aws-sdk/client-cognito-identity-provider": "^3.540.0",
-    "@aws-sdk/credential-providers": "^3.540.0",
-    "@sveltejs/adapter-auto": "^3.2.0",
-    "@sveltejs/kit": "^2.5.8",
-    "@sveltejs/vite-plugin-svelte": "^3.1.0",
-    "autoprefixer": "^10.4.16",
-    "axios": "^1.6.8",
-    "postcss": "^8.4.30",
-    "svelte": "^4.2.9",
-    "tailwindcss": "^3.3.3",
-    "typescript": "^5.0.0",
-    "vite": "^5.2.11"
-  },
-  "type": "module"
+    "axios": "^1.7.0",
+    "svelte": "^5.0.0",
+    "tailwindcss": "^4.0.0-alpha.14"
+  }
 }

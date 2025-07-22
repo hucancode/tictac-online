@@ -1,52 +1,55 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	interface Props {
+		oncreateRoom?: (detail: { roomName: string }) => void;
+		onjoinRoom?: (detail: { roomName: string }) => void;
+	}
 
-	const dispatch = createEventDispatcher();
+	let { oncreateRoom, onjoinRoom }: Props = $props();
 
-	let roomName = '';
-	let showCreateRoom = false;
-	let showJoinRoom = false;
-	let availableRooms: string[] = [];
+	let roomName = $state('');
+	let showCreateRoom = $state(false);
+	let showJoinRoom = $state(false);
+	let availableRooms = $state<string[]>([]);
 
-	const createRoom = () => {
+	function createRoom() {
 		if (roomName.trim()) {
-			dispatch('createRoom', { roomName: roomName.trim() });
+			oncreateRoom?.({ roomName: roomName.trim() });
 			roomName = '';
 			showCreateRoom = false;
 		}
-	};
+	}
 
-	const joinRoom = (room: string) => {
-		dispatch('joinRoom', { roomName: room });
+	function joinRoom(room: string) {
+		onjoinRoom?.({ roomName: room });
 		showJoinRoom = false;
-	};
+	}
 
-	const handleJoinWithName = () => {
+	function handleJoinWithName() {
 		if (roomName.trim()) {
 			joinRoom(roomName.trim());
 			roomName = '';
 		}
-	};
+	}
 
-	export const setAvailableRooms = (rooms: string[]) => {
+	export function setAvailableRooms(rooms: string[]) {
 		availableRooms = rooms;
-	};
+	}
 </script>
 
-<div class="room-manager">
+<div class="room-manager p-4 border border-gray-300 rounded">
 	{#if !showCreateRoom && !showJoinRoom}
 		<div class="flex gap-2">
-			<button on:click={() => showCreateRoom = true} class="bg-blue-500 text-white">
+			<button onclick={() => showCreateRoom = true} class="px-4 py-2 rounded bg-blue-500 text-white">
 				Create Room
 			</button>
-			<button on:click={() => showJoinRoom = true} class="bg-green-500 text-white">
+			<button onclick={() => showJoinRoom = true} class="px-4 py-2 rounded bg-green-500 text-white">
 				Join Room
 			</button>
 		</div>
 	{/if}
 
 	{#if showCreateRoom}
-		<div class="room-form">
+		<div class="room-form p-4">
 			<h3 class="text-lg font-semibold mb-2">Create New Room</h3>
 			<div class="flex gap-2">
 				<input
@@ -54,12 +57,12 @@
 					bind:value={roomName}
 					placeholder="Enter room name"
 					class="border px-2 py-1 flex-1"
-					on:keydown={(e) => e.key === 'Enter' && createRoom()}
+					onkeydown={(e) => e.key === 'Enter' && createRoom()}
 				/>
-				<button on:click={createRoom} class="bg-blue-500 text-white">
+				<button onclick={createRoom} class="px-4 py-2 rounded bg-blue-500 text-white">
 					Create
 				</button>
-				<button on:click={() => { showCreateRoom = false; roomName = ''; }} class="bg-gray-500 text-white">
+				<button onclick={() => { showCreateRoom = false; roomName = ''; }} class="px-4 py-2 rounded bg-gray-500 text-white">
 					Cancel
 				</button>
 			</div>
@@ -67,7 +70,7 @@
 	{/if}
 
 	{#if showJoinRoom}
-		<div class="room-form">
+		<div class="room-form p-4">
 			<h3 class="text-lg font-semibold mb-2">Join Room</h3>
 			<div class="flex gap-2 mb-4">
 				<input
@@ -75,12 +78,12 @@
 					bind:value={roomName}
 					placeholder="Enter room name"
 					class="border px-2 py-1 flex-1"
-					on:keydown={(e) => e.key === 'Enter' && handleJoinWithName()}
+					onkeydown={(e) => e.key === 'Enter' && handleJoinWithName()}
 				/>
-				<button on:click={handleJoinWithName} class="bg-green-500 text-white">
+				<button onclick={handleJoinWithName} class="px-4 py-2 rounded bg-green-500 text-white">
 					Join
 				</button>
-				<button on:click={() => { showJoinRoom = false; roomName = ''; }} class="bg-gray-500 text-white">
+				<button onclick={() => { showJoinRoom = false; roomName = ''; }} class="px-4 py-2 rounded bg-gray-500 text-white">
 					Cancel
 				</button>
 			</div>
@@ -91,7 +94,7 @@
 					<div class="flex flex-col gap-2">
 						{#each availableRooms as room}
 							<button 
-								on:click={() => joinRoom(room)} 
+								onclick={() => joinRoom(room)} 
 								class="border border-gray-300 hover:bg-gray-100 px-4 py-2 text-left"
 							>
 								{room}
@@ -103,17 +106,3 @@
 		</div>
 	{/if}
 </div>
-
-<style>
-	.room-manager {
-		@apply p-4 border border-gray-300 rounded;
-	}
-	
-	.room-form {
-		@apply p-4;
-	}
-	
-	button {
-		@apply px-4 py-2 rounded;
-	}
-</style>

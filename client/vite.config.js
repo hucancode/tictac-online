@@ -1,5 +1,6 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -15,5 +16,5 @@ export default defineConfig({
 			$lib: path.resolve(__dirname, './src/lib'),
 		}
 	},
-	plugins: [sveltekit()]
+	plugins: [tailwindcss(), sveltekit()]
 });

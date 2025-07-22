@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    container_name: tictac-surrealdb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./surrealdb-data:/data
+    command: start --user root --pass root --log debug file:/data/database.db
+    environment:
+      - SURREAL_LOG=debug
+    networks:
+      - tictac-network
+
+networks:
+  tictac-network:
+    driver: bridge

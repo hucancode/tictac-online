@@ -1,8 +1,5 @@
 <script>
-	import '$styles/app.css';
-	import Login from '$components/Login.svelte';
+	import '../styles/app.css';
 </script>
-<nav>
-	<Login />
-</nav>
+
 <slot />
