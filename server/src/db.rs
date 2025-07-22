@@ -9,8 +9,11 @@ use bcrypt::{hash, DEFAULT_COST};
 static DB: OnceCell<Surreal<Client>> = OnceCell::new();
 
 pub async fn init_db() -> Result<(), Box<dyn std::error::Error>> {
-    println!("Connecting to SurrealDB at localhost:8000");
-    let db = Surreal::new::<Ws>("localhost:8000").await?;
+    let db_url = env::var("DATABASE_URL").unwrap_or_else(|_| "ws://localhost:8000".to_string());
+    let db_host = db_url.replace("ws://", "");
+    
+    println!("Connecting to SurrealDB at {}", db_host);
+    let db = Surreal::new::<Ws>(db_host.as_str()).await?;
     println!("Connected to SurrealDB");
     
     println!("Signing in...");

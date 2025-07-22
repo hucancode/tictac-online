@@ -1,0 +1,10 @@
+node_modules/
+build/
+.svelte-kit/
+Dockerfile
+.dockerignore
+.git
+.gitignore
+*.log
+.env
+.env.*

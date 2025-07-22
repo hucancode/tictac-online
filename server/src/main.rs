@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::env;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::sync::Mutex;
@@ -39,6 +40,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // API routes
     let api_routes = Router::new()
+        // Health check
+        .route("/health", get(|| async { "OK" }))
         // Auth routes
         .route("/auth/register", post(api::auth::register))
         .route("/auth/login", post(api::auth::login))
@@ -69,8 +72,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .allow_headers(Any),
         );
 
-    let listener = TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Server is running at {:?}", listener.local_addr()?);
+    let host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("SERVER_PORT").unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("{}:{}", host, port);
+    
+    let listener = TcpListener::bind(&addr).await?;
+    println!("Server is running at {}", addr);
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

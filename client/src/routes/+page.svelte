@@ -5,6 +5,7 @@
 	import Leaderboard from '../components/Leaderboard.svelte';
 	import { auth, logout } from '$lib/stores/auth.svelte';
 	import { onMount } from 'svelte';
+	import { PUBLIC_API_URL } from '$env/static/public';
 	
 	let connected = $state(false);
 	let ws = $state<WebSocket | null>(null);
@@ -46,7 +47,8 @@
 		
 		const token = localStorage.getItem('auth_token');
 		currentRoom = roomName;
-		ws = new WebSocket(`ws://127.0.0.1:8080/ws/${roomName}?token=${encodeURIComponent(token || '')}`);
+		const wsUrl = PUBLIC_API_URL ? PUBLIC_API_URL.replace('http', 'ws') : 'ws://127.0.0.1:8080';
+		ws = new WebSocket(`${wsUrl}/ws/${roomName}?token=${encodeURIComponent(token || '')}`);
 		ws.addEventListener('open', (event) => {
 			connected = true;
 			logEvent(`Connected to room: ${roomName}`);

@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { PUBLIC_API_URL } from '$env/static/public';
 
-const API_URL = 'http://localhost:8080/api';
+const API_URL = PUBLIC_API_URL ? `${PUBLIC_API_URL}/api` : 'http://localhost:8080/api';
 
 // Create axios instance with default config
 const api = axios.create({

@@ -2844,30 +2844,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "poker-game-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "axum-extra",
- "base64 0.22.1",
- "bcrypt",
- "chrono",
- "futures",
- "image",
- "jsonwebtoken",
- "once_cell",
- "serde",
- "serde_json",
- "surrealdb",
- "thiserror 1.0.69",
- "tokio",
- "tower",
- "tower-http",
- "tungstenite 0.20.1",
- "uuid",
-]
-
-[[package]]
 name = "potential_utf"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4375,6 +4351,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "tictac-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "bcrypt",
+ "chrono",
+ "futures",
+ "image",
+ "jsonwebtoken",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "surrealdb",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tungstenite 0.20.1",
+ "uuid",
 ]
 
 [[package]]
