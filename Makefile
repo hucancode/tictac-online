@@ -1,4 +1,4 @@
-.PHONY: help build push deploy clean minikube-start minikube-stop check-tools
+.PHONY: help build-server build-client deploy clean minikube-start minikube-stop status logs-server logs-client logs-db dashboard start-port-forward dev stop-server stop-client start-server start-client reset
 
 # Variables
 MINIKUBE_PROFILE ?= tictac
@@ -95,7 +95,7 @@ start-port-forward: ## Start port forwarding in background
 	@echo "$(GREEN)✅ Port forwarding started$(NC)"
 
 # Main deployment command
-dev: build-server buld-client deploy start-port-forward ## Complete deployment (main command)
+dev: build-server build-client deploy start-port-forward ## Complete deployment (main command)
 	@echo ""
 	@echo "$(GREEN)✅ Deployment complete!$(NC)"
 	@echo ""
@@ -134,7 +134,3 @@ start-client: ## Restart client deployment
 	kubectl scale deployment/client -n tictac --replicas=1
 	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/client
 	@echo "$(GREEN)✓ Client restarted$(NC)"
-
-# Cleanup and reset
-reset: clean minikube-stop ## Clean up and stop everything
-	@echo "$(GREEN)✓ Cleanup complete$(NC)"
