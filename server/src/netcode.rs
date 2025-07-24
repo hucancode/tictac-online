@@ -43,7 +43,7 @@ async fn enter_room(
         player_queue: game_room.player_queue.clone(),
     });
     
-    if !message.is_empty() && sender.send(Message::Text(message.clone())).await.is_err() {
+    if !message.is_empty() && sender.send(Message::Text(message.clone().into())).await.is_err() {
         eprintln!("can't response to client with {}", message);
         None
     } else {
@@ -63,7 +63,7 @@ fn handle_send(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         while let Ok(msg) = rx.recv().await {
-            if sender.send(Message::Text(msg.clone())).await.is_err() {
+            if sender.send(Message::Text(msg.clone().into())).await.is_err() {
                 eprintln!("can't response to client with {}", msg);
             }
         }
@@ -84,7 +84,7 @@ fn handle_receive(
                 continue;
             }
             if let Message::Text(text) = msg.unwrap() {
-                let message = ClientMessage::from(text);
+                let message = ClientMessage::from(text.to_string());
                 println!("Server received: {:?}", message);
                 match message {
                     ClientMessage::Place { x, y } => {
@@ -136,6 +136,52 @@ fn handle_receive(
                                 })) {
                                     eprintln!("Server error while sending message: {}", e);
                                 }
+                                // Move back to preparation phase
+                                game_room.phase = super::game::GamePhase::Ready;
+                                game_room.active_players.clear();
+                                game_room.game_id = None;
+                                
+                                // Send room state update
+                                let _ = tx.send(String::from(ServerMessage::RoomStateUpdate {
+                                    members: game_room.members.clone(),
+                                    player_queue: game_room.player_queue.clone(),
+                                    room_creator: game_room.room_creator.clone().unwrap_or_default(),
+                                }));
+                            }
+                            MoveResult::Draw => {
+                                if let Err(e) =
+                                    tx.send(String::from(ServerMessage::from(game_room.clone())))
+                                {
+                                    eprintln!("Server error while sending message: {}", e);
+                                }
+                                
+                                // Update game in database as a draw
+                                if let Some(game_id) = &game_room.game_id {
+                                    // Convert board to database format
+                                    let board: Vec<Vec<Option<i32>>> = game_room.board
+                                        .iter()
+                                        .map(|row| row.iter().map(|&cell| cell.map(|p| p as i32)).collect())
+                                        .collect();
+                                    
+                                    if let Err(e) = game_db::update_game_board(game_id, board).await {
+                                        eprintln!("Failed to update game board: {}", e);
+                                    }
+                                    
+                                    // End game with no winner (draw)
+                                    if let Err(e) = game_db::end_game(game_id, None).await {
+                                        eprintln!("Failed to end game in database: {}", e);
+                                    }
+                                }
+                                
+                                // Send draw message (reuse GameEnd with empty winner)
+                                if let Err(e) = tx.send(String::from(ServerMessage::GameEnd {
+                                    winner: String::new(),
+                                    winner_x: 0,
+                                    winner_y: 0,
+                                })) {
+                                    eprintln!("Server error while sending message: {}", e);
+                                }
+                                
                                 // Move back to preparation phase
                                 game_room.phase = super::game::GamePhase::Ready;
                                 game_room.active_players.clear();
@@ -261,7 +307,7 @@ async fn handle_ws(socket: WebSocket, player: String, game_room: GameRoom, tx: S
         // Find the other player's email
         let disconnected_email = game_room.active_players.get(player_id).cloned();
         let winner_email = game_room.active_players.iter()
-            .find(|&p| disconnected_email.as_ref().map_or(true, |de| p != de))
+            .find(|&p| disconnected_email.as_ref() != Some(p))
             .cloned();
         
         if let Some(winner) = winner_email {

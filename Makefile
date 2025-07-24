@@ -1,149 +1,134 @@
-.PHONY: help build-server build-client deploy clean minikube-start minikube-stop status logs-server logs-client logs-db dashboard start-port-forward dev stop-server stop-client start-server start-client redeploy-server redeploy-client
+# Minimal Makefile for TicTac Online
+# Detects Docker or Podman automatically
 
-# Variables
-MINIKUBE_PROFILE ?= tictac
-SERVER_IMAGE = tictac-server:latest
-CLIENT_IMAGE = tictac-client:latest
+# Container runtime detection
+CONTAINER_CMD := $(shell command -v podman 2> /dev/null || command -v docker 2> /dev/null)
 
+.PHONY: build deploy clean status urls open-client tunnel forward forward-client forward-server log-server log-client stop-server stop-client start-client start-server stop start
 
-# Colors
-RED := \033[0;31m
-GREEN := \033[0;32m
-YELLOW := \033[1;33m
-NC := \033[0m # No Color
-
-help: ## Show this help
-	@echo "Container Runtime: $(RUNTIME_NAME)"
-	@echo "Minikube Profile: $(MINIKUBE_PROFILE)"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-	@echo ""
-	@echo "Quick start: make dev"
-
-minikube-start: ## Start Minikube cluster
-	@if [ "$(RUNTIME_NAME)" = "podman" ]; then \
-		echo "$(YELLOW)Starting Minikube with Podman driver...$(NC)"; \
-		minikube start --profile=$(MINIKUBE_PROFILE) --driver=podman --container-runtime=cri-o --memory=3072 --cpus=2; \
-	else \
-		echo "$(YELLOW)Starting Minikube with Docker driver...$(NC)"; \
-		minikube start --profile=$(MINIKUBE_PROFILE) --driver=docker --memory=3072 --cpus=2; \
-	fi
-	minikube profile $(MINIKUBE_PROFILE)
-	@if [ "$(RUNTIME_NAME)" = "docker" ]; then \
-		echo "Minikube started. Run 'eval $$(minikube docker-env)' to use Minikube's Docker daemon"; \
-	else \
-		echo "Minikube started with Podman driver. Images will be loaded with 'minikube image load'"; \
-	fi
-
-minikube-stop: ## Stop Minikube cluster
-	minikube stop --profile=$(MINIKUBE_PROFILE)
-
-# Detect container runtime
-CONTAINER_RUNTIME := $(shell command -v docker 2> /dev/null || command -v podman 2> /dev/null)
-ifeq ($(CONTAINER_RUNTIME),)
-    $(error Neither Docker nor Podman is installed)
-endif
-RUNTIME_NAME := $(notdir $(CONTAINER_RUNTIME))
-
-build-server: ## Build server container image
-	@echo "Building server with $(RUNTIME_NAME)..."
-	cd server && $(CONTAINER_RUNTIME) build -t localhost/$(SERVER_IMAGE) .
-	@if [ "$(RUNTIME_NAME)" = "podman" ]; then \
-		podman save localhost/$(SERVER_IMAGE) | minikube image load --profile=$(MINIKUBE_PROFILE) -; \
-	fi
-
-build-client: ## Build client container image
-	@echo "Building client with $(RUNTIME_NAME)..."
-	cd client && $(CONTAINER_RUNTIME) build -t localhost/$(CLIENT_IMAGE) .
-	@if [ "$(RUNTIME_NAME)" = "podman" ]; then \
-		podman save localhost/$(CLIENT_IMAGE) | minikube image load --profile=$(MINIKUBE_PROFILE) -; \
-	fi
-
-deploy: ## Deploy to Minikube
-	kubectl apply -f tictac-k8s.yaml
-	@echo "$(YELLOW)Waiting for deployments to be ready...$(NC)"
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=300s deployment/surrealdb || exit 1
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=300s deployment/server || exit 1
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=300s deployment/client || exit 1
-	@echo "$(GREEN)✅ All deployments are ready!$(NC)"
-
-clean: ## Remove all Kubernetes resources
-	kubectl delete -f tictac-k8s.yaml || true
-
-status: ## Check deployment status
+# Show status
+status:
 	kubectl get all -n tictac
 
-logs-server: ## View server logs
-	kubectl logs -n tictac -l app=server -f
+# Show URLs
+urls:
+	@if command -v minikube > /dev/null && minikube status > /dev/null 2>&1; then \
+		if [[ "$$(uname)" == "Darwin" ]]; then \
+			echo "On macOS with Minikube + Podman, use one of these methods:"; \
+			echo ""; \
+			echo "Method 1 (Recommended): Run 'make forward' in another terminal, then use:"; \
+			echo "  Client: http://localhost:3000"; \
+			echo "  API: http://localhost:8080"; \
+			echo ""; \
+			echo "Method 2: Run 'make tunnel' (minikube tunnel) in another terminal, then use:"; \
+			echo "  Client: http://localhost:30030"; \
+			echo "  API: http://localhost:30080"; \
+			echo ""; \
+			echo "Method 3: Run 'make open-client' to let Minikube handle it"; \
+		else \
+			echo "Client: http://$$(minikube ip):30030"; \
+			echo "API: http://$$(minikube ip):30080"; \
+		fi \
+	else \
+		echo "Client: http://localhost:30030"; \
+		echo "API: http://localhost:30080"; \
+	fi
 
-logs-client: ## View client logs
-	kubectl logs -n tictac -l app=client -f
+# Open client in browser (works with Minikube)
+open-client:
+	@if command -v minikube > /dev/null && minikube status > /dev/null 2>&1; then \
+		echo "Opening client in browser..."; \
+		minikube service client -n tictac; \
+	else \
+		echo "Opening http://localhost:30030"; \
+		open http://localhost:30030 || xdg-open http://localhost:30030 || echo "Please open http://localhost:30030 in your browser"; \
+	fi
 
-logs-db: ## View SurrealDB logs
-	kubectl logs -n tictac -l app=surrealdb -f
+# Start minikube tunnel (for macOS)
+tunnel:
+	@echo "Starting minikube tunnel (keep this running)..."
+	@echo "Press Ctrl+C to stop"
+	minikube tunnel
 
-dashboard: ## Open Kubernetes dashboard
-	minikube dashboard --profile=$(MINIKUBE_PROFILE)
+# Port forward client (alternative to tunnel)
+forward-client:
+	@echo "Starting port forward for client (http://localhost:3000)..."
+	@echo "Press Ctrl+C to stop"
+	kubectl port-forward -n tictac service/client 3000:3000
 
-start-port-forward: ## Start port forwarding in background
-	@echo "$(YELLOW)Setting up port forwarding...$(NC)"
-	@pkill -f "kubectl port-forward.*tictac" || true
-	@kubectl port-forward -n tictac service/client 30030:3000 > /dev/null 2>&1 &
-	@kubectl port-forward -n tictac service/server 30080:8080 > /dev/null 2>&1 &
-	@kubectl port-forward -n tictac service/surrealdb 8000:8000 > /dev/null 2>&1 &
-	@sleep 2
-	@echo "$(GREEN)✅ Port forwarding started$(NC)"
+# Port forward server (alternative to tunnel)
+forward-server:
+	@echo "Starting port forward for server (http://localhost:8080)..."
+	@echo "Press Ctrl+C to stop"
+	kubectl port-forward -n tictac service/server 8080:8080
 
-# Main deployment command
-dev: build-server build-client deploy start-port-forward ## Complete deployment (main command)
+# Port forward both services
+forward: 
+	@echo "Starting port forwards..."
+	@echo "Client will be available at: http://localhost:3000"
+	@echo "Server will be available at: http://localhost:8080"
+	@echo "Press Ctrl+C to stop"
+	@trap 'kill %1 %2' INT; \
+	kubectl port-forward -n tictac service/client 3000:3000 & \
+	kubectl port-forward -n tictac service/server 8080:8080 & \
+	wait
+
+# Build individual images
+build-%:
+	@echo "Building $* with $(CONTAINER_CMD)..."
+	@cd $* && $(CONTAINER_CMD) build -t localhost/tictac-$*:latest .
+# Build both images
+build: build-server build-client
+	@echo "Build complete!"
+
+# Deploy to Kubernetes
+deploy: build
+	@echo "Deploying to Kubernetes..."
+	kubectl apply -f k8s-minimal.yaml
+	@echo "Waiting for deployments..."
+	kubectl wait --for=condition=available --timeout=300s deployment --all -n tictac
+	@echo "Deployment complete!"
+	@make urls
 	@echo ""
-	@echo "$(GREEN)✅ Deployment complete!$(NC)"
-	@echo ""
-	@echo "$(GREEN)Application is running at:$(NC)"
-	@echo "  Client:    $(YELLOW)http://localhost:30030$(NC)"
-	@echo "  API:       $(YELLOW)http://localhost:30080$(NC)"
-	@echo "  Database:  $(YELLOW)localhost:8000$(NC)"
-	@echo ""
-	@echo "$(GREEN)Useful commands:$(NC)"
-	@echo "  make logs-server    # View server logs"
-	@echo "  make logs-client    # View client logs"
-	@echo "  make status         # Check deployment status"
-	@echo "  make dashboard      # Open Kubernetes dashboard"
+	@echo "Quick commands:"
+	@echo "  make open-client  - Open client in browser"
+	@echo "  make tunnel       - Start tunnel for localhost access (macOS)"
+	@echo "  make urls         - Show access URLs"
 
-# Development helpers
-stop-server: ## Stop server deployment (for local server development)
-	@echo "$(YELLOW)Scaling down server deployment...$(NC)"
-	kubectl scale deployment/server -n tictac --replicas=0
-	@echo "$(GREEN)✓ Server stopped. You can now run 'cd server && cargo run'$(NC)"
-	@echo "$(YELLOW)Note: SurrealDB is already available at localhost:8000$(NC)"
+# Clean up everything
+clean:
+	kubectl delete namespace tictac --ignore-not-found=true
+	@echo "Cleaned up Kubernetes resources"
 
-stop-client: ## Stop client deployment (for local client development)
-	@echo "$(YELLOW)Scaling down client deployment...$(NC)"
-	kubectl scale deployment/client -n tictac --replicas=0
-	@echo "$(GREEN)✓ Client stopped. You can now run 'cd client && bun run dev'$(NC)"
-	@echo "$(YELLOW)Note: Client will connect to API at localhost:30080$(NC)"
+# Restart a specific service
+restart-%:
+	kubectl rollout restart deployment/$* -n tictac
+	kubectl rollout status deployment/$* -n tictac
 
-start-server: ## Restart server deployment
-	@echo "$(YELLOW)Scaling up server deployment...$(NC)"
-	kubectl scale deployment/server -n tictac --replicas=1
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/server
-	@echo "$(GREEN)✓ Server restarted$(NC)"
+# Quick development cycle - rebuild and restart
+dev-%: build-%
+	kubectl rollout restart deployment/$* -n tictac
+	kubectl rollout status deployment/$* -n tictac
 
-start-client: ## Restart client deployment
-	@echo "$(YELLOW)Scaling up client deployment...$(NC)"
-	kubectl scale deployment/client -n tictac --replicas=1
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/client
-	@echo "$(GREEN)✓ Client restarted$(NC)"
+# Get server logs (with optional line count)
+log-%:
+	kubectl logs deployment/$* -n tictac --tail=$(or $(LINES),50) -f
 
-# Rebuild and redeploy targets (maintains port forwarding)
-redeploy-server: build-server ## Rebuild and redeploy server only
-	kubectl rollout restart deployment/server -n tictac
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/server
-	@$(MAKE) start-port-forward
-	@echo "$(GREEN)✓ Server redeployed$(NC)"
+# Scale server to 0 (stop)
+stop-%:
+	kubectl scale deployment/$* -n tictac --replicas=0
+	@echo "$* stopped"
 
-redeploy-client: build-client ## Rebuild and redeploy client only
-	kubectl rollout restart deployment/client -n tictac
-	@kubectl wait --namespace=tictac --for=condition=available --timeout=60s deployment/client
-	@$(MAKE) start-port-forward
-	@echo "$(GREEN)✓ Client redeployed$(NC)"
+# Scale server to 1 (start)
+start-%:
+	kubectl scale deployment/$* -n tictac --replicas=1
+	kubectl wait --for=condition=available --timeout=60s deployment/$* -n tictac
+	@echo "$* started"
+
+# Stop all services (except database)
+stop: stop-server stop-client
+	@echo "Server and client stopped"
+
+# Start all services
+start: start-server start-client
+	@echo "Server and client started"

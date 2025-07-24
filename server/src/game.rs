@@ -29,6 +29,7 @@ pub enum MoveResult {
     Ok,
     Err,
     Win,
+    Draw,
 }
 impl Default for GameState {
     fn default() -> Self {
@@ -108,6 +109,17 @@ impl GameState {
             .unwrap_or(1)
     }
 
+    fn is_board_full(&self) -> bool {
+        for row in &self.board {
+            for cell in row {
+                if cell.is_none() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
     pub fn place(&mut self, x: usize, y: usize, member_id: usize) -> MoveResult {
         if member_id >= self.members.len() {
             eprintln!("Invalid member id {}", member_id);
@@ -137,11 +149,21 @@ impl GameState {
         }
         
         self.board[x][y] = Some(player_index);
+        
+        // Check for win
         if self.count_trail(x, y) >= WINNING_TRAIL {
             self.current_turn = usize::MAX;
             self.phase = GamePhase::Scoreboard;
             return MoveResult::Win;
         }
+        
+        // Check for draw
+        if self.is_board_full() {
+            self.current_turn = usize::MAX;
+            self.phase = GamePhase::Scoreboard;
+            return MoveResult::Draw;
+        }
+        
         self.current_turn = (self.current_turn + 1) % ACTING_PLAYER;
         MoveResult::Ok
     }

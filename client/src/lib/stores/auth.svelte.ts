@@ -101,9 +101,6 @@ export function updateUser(user: UserProfile) {
   localStorage.setItem('user', JSON.stringify(user));
 }
 
-// Initialize on module load
-initializeAuth();
-
 // Export getters using $derived
 export const auth = {
   get user() { return authState.user; },
@@ -113,3 +110,17 @@ export const auth = {
   get isAuthenticated() { return !!authState.token; },
   get isAdmin() { return authState.user?.is_admin || false; }
 };
+
+// Initialize on first access if in browser
+let initialized = false;
+export function ensureInitialized() {
+  if (!initialized && typeof window !== 'undefined') {
+    initializeAuth();
+    initialized = true;
+  }
+}
+
+// Also try to initialize immediately if we're in the browser
+if (typeof window !== 'undefined') {
+  ensureInitialized();
+}

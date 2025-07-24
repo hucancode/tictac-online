@@ -65,27 +65,56 @@ pub async fn list_users(
         .take(0)
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-    let profiles: Vec<UserProfile> = users
-        .into_iter()
-        .map(|user| {
-            let win_rate = if user.games_played > 0 {
-                (user.games_won as f64 / user.games_played as f64) * 100.0
-            } else {
-                0.0
-            };
+    // Get game stats for all users
+    let mut profiles = Vec::new();
+    
+    for user in users {
+        let user_id = user.id.as_ref().unwrap();
+        
+        // Query game stats - simplify to avoid multiple result sets
+        // Count total games - select only id to avoid serialization issues
+        let mut total_result = get_db()
+            .query("SELECT id FROM game WHERE (player1 = $user_id OR player2 = $user_id) AND status = 'completed'")
+            .bind(("user_id", user_id.clone()))
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        
+        let total_games: Vec<serde_json::Value> = total_result
+            .take(0)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        
+        let games_played = total_games.len() as i32;
+        
+        // Count wins - select only id to avoid serialization issues
+        let mut wins_result = get_db()
+            .query("SELECT id FROM game WHERE winner = $user_id AND status = 'completed'")
+            .bind(("user_id", user_id.clone()))
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        
+        let wins: Vec<serde_json::Value> = wins_result
+            .take(0)
+            .map_err(|e| AppError::Database(e.to_string()))?;
+        
+        let games_won = wins.len() as i32;
 
-            UserProfile {
-                id: user.id.as_ref().unwrap().to_string(),
-                email: user.email,
-                username: user.username,
-                profile_picture: user.profile_picture,
-                elo: user.elo,
-                games_played: user.games_played,
-                games_won: user.games_won,
-                win_rate,
-            }
-        })
-        .collect();
+        let win_rate = if games_played > 0 {
+            (games_won as f64 / games_played as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        profiles.push(UserProfile {
+            id: user_id.to_string(),
+            email: user.email,
+            username: user.username,
+            profile_picture: user.profile_picture,
+            elo: user.elo,
+            games_played,
+            games_won,
+            win_rate,
+        });
+    }
 
     Ok(Json(profiles))
 }
@@ -121,14 +150,41 @@ pub async fn update_user(
         .map_err(|e| AppError::Database(e.to_string()))?;
 
     let user: Option<User> = get_db()
-        .select(user_id)
+        .select(user_id.clone())
         .await
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-    let user = user.ok_or_else(|| AppError::NotFound)?;
+    let user = user.ok_or(AppError::NotFound)?;
 
-    let win_rate = if user.games_played > 0 {
-        (user.games_won as f64 / user.games_played as f64) * 100.0
+    // Query game stats - simplify to avoid multiple result sets
+    // Count total games
+    let mut total_result = get_db()
+        .query("SELECT * FROM game WHERE (player1 = $user_id OR player2 = $user_id) AND status = 'completed'")
+        .bind(("user_id", user_id.clone()))
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let total_games: Vec<serde_json::Value> = total_result
+        .take(0)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let games_played = total_games.len() as i32;
+    
+    // Count wins
+    let mut wins_result = get_db()
+        .query("SELECT * FROM game WHERE winner = $user_id AND status = 'completed'")
+        .bind(("user_id", user_id))
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let wins: Vec<serde_json::Value> = wins_result
+        .take(0)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let games_won = wins.len() as i32;
+
+    let win_rate = if games_played > 0 {
+        (games_won as f64 / games_played as f64) * 100.0
     } else {
         0.0
     };
@@ -139,8 +195,8 @@ pub async fn update_user(
         username: user.username,
         profile_picture: user.profile_picture,
         elo: user.elo,
-        games_played: user.games_played,
-        games_won: user.games_won,
+        games_played,
+        games_won,
         win_rate,
     };
 
@@ -165,22 +221,40 @@ pub async fn delete_user(
 }
 
 pub async fn get_stats(_admin: AdminUser) -> Result<Json<serde_json::Value>, AppError> {
-    let mut result = get_db()
-        .query(
-            r#"
-            SELECT 
-                count() as total_users,
-                math::sum(games_played) as total_games,
-                math::avg(elo) as average_elo
-            FROM user
-            "#,
-        )
+    // Get stats separately to avoid multiple result sets
+    let mut users_result = get_db()
+        .query("SELECT * FROM user")
         .await
         .map_err(|e| AppError::Database(e.to_string()))?;
-
-    let stats: Option<serde_json::Value> = result
+    
+    let users: Vec<User> = users_result
         .take(0)
         .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let total_users = users.len();
+    let average_elo = if total_users > 0 {
+        users.iter().map(|u| u.elo as f64).sum::<f64>() / total_users as f64
+    } else {
+        1200.0
+    };
+    
+    // Select only id to avoid serialization issues
+    let mut games_result = get_db()
+        .query("SELECT id FROM game WHERE status = 'completed'")
+        .await
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let games: Vec<serde_json::Value> = games_result
+        .take(0)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+    
+    let total_games = games.len();
+    
+    let stats = Some(serde_json::json!({
+        "total_users": total_users,
+        "total_games": total_games,
+        "average_elo": average_elo
+    }));
 
     Ok(Json(stats.unwrap_or_else(|| serde_json::json!({
         "total_users": 0,

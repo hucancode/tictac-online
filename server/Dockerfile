@@ -1,5 +1,5 @@
 # Use cargo-chef for efficient Docker builds
-FROM lukemathwalker/cargo-chef:latest-rust-1.88 AS chef
+FROM docker.io/lukemathwalker/cargo-chef:latest-rust-1.88 AS chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM docker.io/debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \

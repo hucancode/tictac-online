@@ -1,5 +1,5 @@
 # Build stage
-FROM oven/bun:1-alpine as builder
+FROM docker.io/oven/bun:1-alpine as builder
 
 WORKDIR /app
 
@@ -13,11 +13,14 @@ RUN bun install --frozen-lockfile
 COPY . .
 
 # Build the application
-ENV PUBLIC_API_URL=http://localhost:30080
-RUN bun run build
+# Use VITE_API_URL as that's what the client code expects
+# Default to port-forwarded URL (8080) instead of NodePort (30080)
+ARG VITE_API_URL=http://localhost:8080
+ENV VITE_API_URL=${VITE_API_URL}
+RUN echo "Building with API URL: $VITE_API_URL" && bun run build
 
 # Production stage
-FROM oven/bun:1-alpine
+FROM docker.io/oven/bun:1-alpine
 
 WORKDIR /app
 

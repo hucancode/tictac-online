@@ -3,8 +3,8 @@
 	import Auth from '../components/Auth.svelte';
 	import Leaderboard from '../components/Leaderboard.svelte';
 	import { auth, logout } from '$lib/stores/auth.svelte';
+	import { getApiUrl } from '$lib/config';
 	import { onMount } from 'svelte';
-	import { PUBLIC_API_URL } from '$env/static/public';
 	
 	let connected = $state(false);
 	let ws = $state<WebSocket | null>(null);
@@ -48,7 +48,7 @@
 		
 		const token = localStorage.getItem('auth_token');
 		currentRoom = roomName;
-		const wsUrl = PUBLIC_API_URL ? PUBLIC_API_URL.replace('http', 'ws') : 'ws://127.0.0.1:8080';
+		const wsUrl = getApiUrl().replace('http', 'ws');
 		ws = new WebSocket(`${wsUrl}/ws/${roomName}?token=${encodeURIComponent(token || '')}`);
 		ws.addEventListener('open', (event) => {
 			connected = true;
@@ -333,8 +333,8 @@
 										<p class="text-xl mb-4">
 											{#if gameResult.winner === auth.user?.email}
 												<span class="text-green-600">🎉 You Won! 🎉</span>
-											{:else if gameResult.winner === 'Draw'}
-												<span class="text-yellow-600">It's a Draw!</span>
+											{:else if gameResult.winner === '' || gameResult.winner === 'Draw'}
+												<span class="text-yellow-600">🤝 It's a Draw!</span>
 											{:else}
 												<span class="text-red-600">😔 You Lost</span>
 												<br>

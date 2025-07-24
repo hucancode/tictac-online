@@ -9,6 +9,7 @@ impl Default for EloRating {
 }
 
 impl EloRating {
+    #[allow(dead_code)]
     pub fn new(k_factor: f64) -> Self {
         Self { k_factor }
     }
@@ -39,6 +40,17 @@ impl EloRating {
 
     pub fn calculate_for_draw(&self, rating_a: i32, rating_b: i32) -> (i32, i32) {
         self.calculate_new_ratings(rating_a, rating_b, 0.5)
+    }
+}
+
+// Helper function for easier use in other modules
+pub fn calculate_elo_change(player1_elo: i32, player2_elo: i32, player1_wins: bool) -> (i32, i32) {
+    let elo = EloRating::default();
+    if player1_wins {
+        elo.calculate_for_game(player1_elo, player2_elo)
+    } else {
+        let (p2_new, p1_new) = elo.calculate_for_game(player2_elo, player1_elo);
+        (p1_new, p2_new)
     }
 }
 

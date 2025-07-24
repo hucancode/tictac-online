@@ -10,8 +10,6 @@ pub struct User {
     pub password_hash: String,
     pub profile_picture: Option<String>,
     pub elo: i32,
-    pub games_played: i32,
-    pub games_won: i32,
     pub is_admin: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

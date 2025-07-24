@@ -1,14 +1,13 @@
 import axios from 'axios';
-import { PUBLIC_API_URL } from '$env/static/public';
-
-const API_URL = PUBLIC_API_URL ? `${PUBLIC_API_URL}/api` : 'http://localhost:8080/api';
+import { getApiUrl } from './config';
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: `${getApiUrl()}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Required for CORS with credentials
 });
 
 // Add auth token to requests
@@ -70,6 +69,36 @@ export interface LeaderboardEntry {
   profile_picture?: string;
 }
 
+export interface LeaderboardResponse {
+  entries: LeaderboardEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+export interface MatchHistoryItem {
+  id: string;
+  opponent_id: string;
+  opponent_name: string;
+  opponent_elo: number;
+  result: 'win' | 'loss' | 'draw';
+  my_elo_before: number;
+  my_elo_after: number;
+  opponent_elo_before: number;
+  opponent_elo_after: number;
+  elo_change: number;
+  created_at: string;
+  ended_at?: string;
+}
+
+export interface MatchHistoryResponse {
+  matches: MatchHistoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export const authApi = {
   register: async (data: RegisterData): Promise<LoginResponse> => {
     const response = await api.post<LoginResponse>('/auth/register', data);
@@ -113,15 +142,34 @@ export const userApi = {
 };
 
 export const leaderboardApi = {
-  getLeaderboard: async (limit = 20, offset = 0): Promise<LeaderboardEntry[]> => {
-    const response = await api.get<LeaderboardEntry[]>('/leaderboard', {
-      params: { limit, offset },
+  getLeaderboard: async (page = 1, limit = 20): Promise<LeaderboardResponse> => {
+    const response = await api.get<LeaderboardResponse>('/leaderboard', {
+      params: { page, limit },
     });
     return response.data;
   },
 
   getTopPlayers: async (): Promise<LeaderboardEntry[]> => {
     const response = await api.get<LeaderboardEntry[]>('/leaderboard/top');
+    return response.data;
+  },
+
+  getPlayerRank: async (userId: string): Promise<{ rank: number | null; message?: string }> => {
+    const response = await api.get(`/leaderboard/rank/${userId}`);
+    return response.data;
+  },
+};
+
+export const gamesApi = {
+  getMatchHistory: async (page = 1, limit = 20): Promise<MatchHistoryResponse> => {
+    const response = await api.get<MatchHistoryResponse>('/games/history', {
+      params: { page, limit },
+    });
+    return response.data;
+  },
+
+  getGameDetails: async (gameId: string) => {
+    const response = await api.get(`/games/${gameId}`);
     return response.data;
   },
 };

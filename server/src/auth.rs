@@ -1,6 +1,5 @@
 use crate::models::{Claims, User};
 use axum::{
-    async_trait,
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
@@ -46,14 +45,16 @@ pub fn create_jwt(user: &User) -> Result<String, jsonwebtoken::errors::Error> {
 
 pub struct AuthUser(pub Claims);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthUser
 where
     S: Send + Sync,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
         let TypedHeader(Authorization(bearer)) =
             TypedHeader::<Authorization<Bearer>>::from_request_parts(parts, _state)
                 .await
@@ -66,16 +67,19 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub struct AdminUser(pub Claims);
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AdminUser
 where
     S: Send + Sync,
 {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Self, Self::Rejection> {
         let AuthUser(claims) = AuthUser::from_request_parts(parts, state).await?;
         
         if !claims.is_admin {
